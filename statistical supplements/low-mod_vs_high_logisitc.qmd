@@ -1,0 +1,979 @@
+---
+title: "Predicting Low / Moderate Anxiety vs High Anxiety"
+author: "Ian McFarlane"
+format: 
+  html:
+    page-layout: article  
+    toc: true
+    toc-location: left
+    toc-title: "Contents"
+    toc-depth: 3
+    toc-float: true
+    toc-expand: true
+echo: false
+---
+
+
+## Overview
+
+```{r setup}
+#| message: false
+#| results: hide
+#| warning: false
+
+library(tidyverse)
+library(DT)
+library(ranger)
+library(flexplot)
+library(caret)
+library(pROC)
+library(car)
+library(patchwork)
+```
+
+
+```{r read_data}
+#| warning: false
+
+data <- read_csv("../data/enhanced_anxiety_dataset.csv")
+```
+
+```{r prepare_data}
+
+model_data <- data %>% 
+    mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)`<=7, "Low/Moderate Anxiety", "High Anxiety")) %>% 
+    select(-`Anxiety Level (1-10)`) %>%
+    mutate(across(where(is.character), as.factor)) %>% 
+    mutate(AnxietyBinary = factor(AnxietyBinary, levels=c("Low/Moderate Anxiety", "High Anxiety"))) 
+
+names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
+```
+
+As our primary modeling goal is **interpretation**, logistic regression is a natural choice. It offers a balance between statistical rigor and interpretability, allowing us to quantify the direction and strength of associations between predictors and the probability of high anxiety.
+
+Our exploratory data analysis revealed distinct behavioral patterns between the two outcome groups — *Low/Moderate Anxiety* vs *High Anxiety* — suggesting that a logistic regression model should be capable of capturing meaningful signal from the predictors.
+
+Before fitting the model, we assessed the distribution of the binary outcome. The result indicated a **substantial class imbalance**, with approximately a 10:1 ratio favoring the *Low/Moderate Anxiety* group. Despite this, the minority class (*High Anxiety*) includes over 1,000 observations — a sufficient sample size for modeling, especially given our focus on estimation rather than classification performance.
+
+```{r class_imbalance}
+#| echo: false
+
+table(model_data$AnxietyBinary)
+```
+
+
+
+While class imbalance often warrants consideration of remedies such as class weighting or resampling (e.g., SMOTE, undersampling), these approaches come with notable trade-offs. Weighted models complicate coefficient interpretation by altering the meaning of the estimated log-odds, while resampling distorts the natural prevalence of the outcome — a key feature when the goal is to understand real-world data as it is, not as it might be under synthetic balance.
+
+Because our objective is to **understand the relationship between predictors and the likelihood of high anxiety** in the real population, we deliberately avoid rebalancing techniques. Instead, we proceed with a standard logistic regression model, relying on its capacity to yield interpretable and statistically sound insights, even in the presence of imbalance.
+
+
+## Model Selection
+
+### Parsimonious, Importance-Driven Model
+
+We computed permutation-based feature importance using a random forest. A clear inflection point in the importance rankings suggests that the top five variables—Therapy Sessions, Stress Level, Sleep Hours, Caffeine Intake, and Diet Quality—form a distinct group, contributing substantially more predictive information than the remaining features. This observation, paired with the common rule-of-thumb of limiting logistic models to ~5 predictors to avoid overfitting, motivated our choice to begin with this compact set.
+
+
+
+```{r feature_importance}
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+model <- ranger(
+  formula = AnxietyBinary ~ .,
+  data = model_data,
+  probability = FALSE,               
+  importance = "permutation",       
+  num.trees = 500
+)
+
+# Get permutation importance
+
+imp <- data.frame(
+  Feature = names(model$variable.importance),
+  Importance = model$variable.importance
+)
+
+ggplot(imp, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Permutation Feature Importance (Random Forest)", y = "Importance", x = "") +
+  theme_minimal()
+```
+
+
+While additional variables may be considered later, this starting point balances statistical rigor, model stability, and interpretability. All subsequent decisions are guided by model comparison statistics and the overarching goal of building a transparent and communicable model.
+
+```{r initial_model}
+#| warning: false
+
+
+initial_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data=model_data)
+
+initial_model$formula
+```
+
+::: {.panel-tabset}
+
+#### Removing Variables
+
+To test whether each predictor in the initial model contributes meaningfully to model fit, we conducted a series of single-variable removal tests. For each test, a simplified model was created by dropping one predictor, then compared to the five-variable model using AIC, BIC, and Bayes Factors. This approach helps identify variables that may be redundant or contribute minimal added value relative to the model’s complexity.
+
+The results (shown below) indicate that removing any one of the five predictors leads to a notably worse-fitting model across all criteria. In each case, BIC increases and the corresponding Bayes Factor favors the full model, suggesting that each variable provides unique explanatory signal. These findings support retaining all five predictors in the base model.
+
+
+```{r removing_variables}
+
+cat("Therapy Sessions:\n")
+simplified_model <- update(initial_model, . ~ . - Therapy.Sessions)
+print(model.comparison(simplified_model, initial_model)$statistics)
+
+cat("Stress Level:\n")
+simplified_model <- update(initial_model, . ~ . - Stress.Level)
+print(model.comparison(simplified_model, initial_model)$statistics)
+
+cat("Sleep Hours:\n")
+simplified_model <- update(initial_model, . ~ . - Sleep.Hours)
+print(model.comparison(simplified_model, initial_model)$statistics)
+
+cat("Caffeine Intake:\n")
+simplified_model <- update(initial_model, . ~ . - Caffeine.Intake)
+print(model.comparison(simplified_model, initial_model)$statistics)
+
+cat("Diet Quality:\n")
+simplified_model <- update(initial_model, . ~ . - Diet.Quality)
+print(model.comparison(simplified_model, initial_model)$statistics)
+```
+
+
+
+#### Adding Variables
+
+We next tested whether additional predictors, ranked by permutation importance, meaningfully improved model fit. Each was tentatively added in sequence, with comparisons based on AIC, BIC, and Bayes Factors.
+
+Heart Rate, Sweating Level, Breathing Rate, Physical Activity, and Age all improved fit and were retained. Alcohol Consumption did not—BIC increased, and the Bayes Factor favored the simpler model—so no further variables were added.
+
+The resulting model includes all predictors supported by importance rankings and model comparison statistics, without incorporating variables of negligible value.
+
+##### Heart Rate
+
+```{r adding_variables}
+#| warning: false
+
+# Start with the initial model (no Heart Rate)
+no_heart_rate <- initial_model
+
+# Add Heart Rate
+heart_rate_added <- update(no_heart_rate, . ~ . + Heart.Rate)
+print(model.comparison(no_heart_rate, heart_rate_added)$statistics)
+
+# Add Sweating Level
+sweating_added <- update(heart_rate_added, . ~ . + Sweating.Level)
+print(model.comparison(heart_rate_added, sweating_added)$statistics)
+
+# Add Breathing Rate
+breathing_added <- update(sweating_added, . ~ . + Breathing.Rate)
+print(model.comparison(sweating_added, breathing_added)$statistics)
+
+# Add Physical Activity
+activity_added <- update(breathing_added, . ~ . + Physical.Activity)
+print(model.comparison(breathing_added, activity_added)$statistics)
+
+# Add Age
+age_added <- update(activity_added, . ~ . + Age)
+print(model.comparison(activity_added, age_added)$statistics)
+
+# Try adding Alcohol Consumption
+alcohol_added <- update(age_added, . ~ . + Alcohol.Consumption)
+print(model.comparison(age_added, alcohol_added)$statistics)
+
+# Final retained model
+step_importance_model <- age_added
+step_importance_model$formula
+```
+
+
+#### Step-wise Selection
+
+To compare our manual approach against a traditional model selection method, we ran a stepwise selection procedure using AIC. The process began with the initial five-variable model and evaluated additions and removals based on AIC improvements.
+
+```{r stepwise}
+#| warning: false
+#| cache: true
+
+full_model <- glm(AnxietyBinary ~ ., family = binomial(), data=model_data)
+null_model <- glm(AnxietyBinary ~ 1, family = binomial(), data=model_data)
+
+stepwise_model <- step(initial_model,
+                       scope = list(lower = null_model, upper = full_model),
+                       direction = "both",
+                       trace = FALSE)
+
+stepwise_model$formula
+```
+
+The stepwise procedure yielded a model nearly identical to the one selected manually—differing only by the inclusion of `Alcohol Consumption`, which our manual process excluded due to weaker model comparison support. This convergence supports the robustness of the manually selected model.
+
+:::
+
+
+### Selecting a Model
+
+To compare candidate models, we evaluated their discriminative performance using the Area Under the ROC Curve (AUC). AUC offers a single, interpretable measure of how well a model distinguishes between high and low/moderate anxiety cases, and is a pragmatic way to navigate **model decision overload** when all candidates appear strong. In our analysis, every model — from the initial five-variable additive model to the fully extended version — achieved AUCs exceeding 0.998.
+
+This uniformly high performance presented a practical dilemma: **when every model performs exceptionally, how do we choose?**
+
+
+```{r selection}
+#| message: false
+get_auc <- function(model) {
+    y_true <- model$y
+    y_pred <- predict(model, type = "response")
+    round(auc(roc(y_true, y_pred))[1], 4)
+    
+}
+
+
+model_labels <- c(
+    "importance (5 variables)", 
+    "importance (5 variables) + Heart Rate", 
+    "Fully Fxtended Importance", 
+    "Step-wise Selection", 
+    "Full Model (All varibles)"
+)
+
+model_aucs <- c(
+    get_auc(initial_model),
+    get_auc(update(initial_model, . ~ . + Heart.Rate)),
+    get_auc(step_importance_model),
+    get_auc(stepwise_model),
+    get_auc(full_model)
+)
+
+
+datatable(data.frame(Model = model_labels, AUC = model_aucs))
+```
+
+
+While AUC differences were numerically small (e.g., +0.0005 from importance-based five-variable model to full model with all variables), they underscore a broader tradeoff. The models offering slight performance gains did so at the cost of complexity and interpretability. AUC does not reflect:
+
+- Calibration — whether predicted probabilities match actual outcomes.
+
+- Local fit — whether the model performs equally well across different subgroups.
+
+- Explanatory clarity — whether stakeholders can make sense of the results.
+
+We used AUC as a pragmatic filter, not a final arbiter. Its role was to flag when a model’s added complexity didn’t meaningfully improve performance, so we could focus on models that were both accurate and communicable. As such, we **selected the importance-guided five-variable model** for its balance of clarity and explanatory power — simple enough to interpret easily, yet robust enough to capture the key signals in the data.
+
+## Diagnostics
+
+With our model selected, we now assess its diagnostics to ensure the assumptions of logistic regression are reasonably satisfied and that the results are stable and interpretable. This section is organized around three core pillars of diagnostic evaluation:
+
+- **Outlier analysis**, which helps identify individual observations that may unduly influence model estimates or mask broader patterns.
+- **Structural assumption checks**, including linearity, additivity (no interaction terms), and multicollinearity, which apply on the logit scale and ensure the model’s functional form remains appropriate.
+- **Calibration assessment**, which verifies that predicted probabilities align with observed outcome frequencies and that the model performs as a reliable estimator.
+
+
+### Outlier Detection
+
+Given the large sample size (~11,000 observations), the presence of outliers is statistically expected. However, certain outliers can have a disproportionate impact on model interpretation and parameter estimates.
+
+::: {.panel-tabset}
+
+#### Plots
+
+To explore this possibility, we generated four diagnostic plots aimed at visually identifying potentially problematic points.
+
+The four plots include:
+
+1. Leverage vs. Cook’s Distance — highlights points that are both extreme in predictor space and exert strong global influence.
+
+2. Linear Predictor vs. Pearson Residuals — assesses model fit and potential non-linearity across the logit scale.
+
+3. Leverage vs. Pearson Residuals — identifies poorly fitted observations that may reside in sparse regions of the predictor space.
+
+4. Cook’s Distance by Observation Index — detects globally influential observations without reference to specific predictors.
+
+*Note*: Labels were added heuristically, prioritizing points with the most extreme values while minimizing overlap to preserve readability. These labels are illustrative and do not represent an exhaustive set of outliers.
+
+
+```{r outlier_data}
+
+outlier_data <- model_data %>% 
+    select(Therapy.Sessions, Stress.Level, Sleep.Hours, 
+    Caffeine.Intake, Diet.Quality, AnxietyBinary) %>%
+    mutate(
+        PredictedAnxiety = ifelse(predict(initial_model, ., type="response") >= 0.5, 
+                                  "High Anxiety", "Low/Moderate Anxiety"),
+        PredictedProb = predict(initial_model, ., type="response"),
+        Cook = cooks.distance(initial_model),
+        PearsonResiduals = residuals(initial_model, type = "pearson"),
+        Leverage = hatvalues(initial_model),
+        LinearPredictors = predict(initial_model, ., type="link"),
+        Row = row_number()
+    )
+```
+
+```{r outlier_plots}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-width: 14
+#| fig-height: 12
+#| fig-align: center
+
+
+p1 <- ggplot(outlier_data, aes(x = Leverage, y = Cook)) +
+  geom_point(aes(size = abs(PearsonResiduals)), alpha = 0.6) +
+  scale_size_continuous(name = "|Pearson Residual|") +
+  geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
+  geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "blue") +
+    geom_text(data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Leverage vs Cook’s Distance",
+       x = "Leverage (Hat Values)",
+       y = "Cook's Distance") +
+  theme_minimal()
+
+
+p2 <- ggplot(outlier_data, aes(x = LinearPredictors, y = PearsonResiduals)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 0.75, color = "steelblue") +
+  geom_hline(yintercept = c(-5, 5), linetype = "dashed", color = "red") +
+  geom_text(data = filter(outlier_data, abs(PearsonResiduals) > 5),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Linear Predictor vs Pearson Residuals",
+       x = "Linear Predictor (logit scale)",
+       y = "Pearson Residuals") +
+  theme_minimal()
+
+
+p3 <- ggplot(outlier_data, aes(x = Leverage, y = PearsonResiduals)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = c(-2, 2), linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
+  geom_text(data = filter(outlier_data, abs(PearsonResiduals) > 10 | Leverage > 0.04),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Leverage vs Pearson Residuals",
+       x = "Leverage (Hat Values)",
+       y = "Pearson Residuals") +
+  theme_minimal()
+
+
+p4 <- ggplot(outlier_data, aes(x = Row, y = Cook)) +
+  geom_segment(aes(x = Row, xend = Row, y = 0, yend = Cook),
+               color = "steelblue", linewidth = 0.4) +
+  geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "red") +
+  geom_text(data = filter(outlier_data, Cook > 0.02),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Cook’s Distance",
+       x = "Observation Index",
+       y = "Cook's Distance") +
+  theme_minimal()
+
+
+combined_plot <- (p1 + p2) / (p3 + p4)
+
+combined_plot &
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+
+
+We highlight two key groups:
+
+- **Points 10306, 2112, and 3963**
+These cases have large Pearson residuals but low leverage—meaning they aren’t unusual in terms of predictor values but are still mispredicted. All were labeled as “Low/Moderate Anxiety” but predicted as “High Anxiety,” likely due to high stress levels (9–10) and low therapy engagement (0–3 sessions/month). These seem like plausible edge cases, not data errors.
+
+- **Points 10699, 6037, and 4214**
+These cases have high leverage and high Cook’s Distance but low residuals—suggesting that, despite being in sparse regions of the predictor space, the model predicted them reasonably well. Their predicted probabilities hover near the decision threshold (0.29 for 6037 and 0.5 for 10699 and 4214), which reflects some model uncertainty and aligns with their unusual combinations of predictors.
+
+
+
+#### Systematic Outlier Selection
+
+While manual inspection is helpful, it’s not feasible to review every flagged case. Instead, we systematically selected the top 30 observations using the following criteria:
+
+- Absolute Pearson residual > 2
+
+- Cook’s Distance > 4 / n
+
+- Ranked by Cook’s Distance, prioritizing the most influential cases
+
+
+
+```{r outlier_table}
+top_outliers <- outlier_data %>% 
+    filter(abs(PearsonResiduals) > 2 | Cook > 4 / nrow(outlier_data)) %>% 
+  slice_max(Cook, n = 30)  
+top_ids <- top_outliers$Row
+
+datatable(top_outliers)
+```
+
+
+These 30 observations were reviewed for unusual predictor combinations. Some notable patterns included:
+
+- High anxiety despite good diet quality and/or low caffeine intake
+
+- High stress levels paired with low anxiety
+
+While these combinations are rare, they’re not implausible. Excluding them would risk modeling an oversimplified—and potentially biased—version of reality that ignores meaningful edge cases.
+
+
+#### Modeling Trimmed vs. Full Dataset
+
+To evaluate the impact of these outliers, we fit a trimmed model that excludes the top 30 most influential observations identified in the previous step.
+
+```{r outlier_trimmed}
+#| warning: false
+#| message: false
+
+
+model_trimmed <- glm(
+  AnxietyBinary ~ Therapy.Sessions + Stress.Level + 
+    Sleep.Hours + Caffeine.Intake + Diet.Quality,
+  data = model_data[-top_ids, ],
+  family = binomial()
+)
+
+coef_comparison <- data.frame(
+  Term = names(coef(initial_model)),
+  Full_Model = coef(initial_model),
+  Trimmed_Model = coef(model_trimmed)
+) %>% mutate(Ratio = Trimmed_Model/Full_Model)
+print(coef_comparison)
+
+auc_full <- auc(model_data$AnxietyBinary, predict(initial_model, type = "response"))
+auc_trimmed <- auc(model_data$AnxietyBinary[-top_ids], predict(model_trimmed, type = "response"))
+auc_trimmed_all <- auc(model_data$AnxietyBinary, predict(model_trimmed, newdata = model_data, type = "response"))
+
+
+cat("Model trained with Full Data: ", round(auc_full, 4), " AUC\n")
+cat("Model trained with Trimmed Data: ", round(auc_trimmed, 4), "AUC (Trimmed Dataset)\n")
+cat("Model trained with Trimmed Data: ", round(auc_trimmed_all, 4), "AUC (Full Dataset)\n")
+```
+
+The trimmed model preserves the direction of all coefficients, but their magnitudes increase by roughly 1.5×, consistent with the model being fit on less variable data. In linear regression, this kind of inflation might suggest overfitting or instability. In logistic regression, though, it typically reflects increased confidence in predictions rather than a meaningful gain in accuracy.
+
+In terms of predictive performance, the difference is negligible. The trimmed model performs nearly perfectly on the reduced dataset—but that’s expected and uninformative, since the most influential points were removed. When evaluated on the full dataset—a more honest test—its AUC drops by just 0.0001. This suggests that, while the trimmed model has more extreme coefficients, it doesn’t improve performance and may even generalize slightly worse.
+
+Given our goal of modeling real-world data, we choose to **retain the model trained on the full dataset**. It better captures natural variability and avoids excluding rare but plausible observations that might otherwise be misrepresented or lost.
+
+:::
+
+
+### Linearity
+
+The linearity plots show slight “S-shaped” curves for `Diet Quality`, `Caffeine Intake`, and `Stress Level`, suggesting mild nonlinearity near the extremes. These deviations appear subtle and are unlikely to meaningfully affect model performance. In contrast, `Therapy Sessions` and `Sleep Hours` show more pronounced curvature at higher log-odds, indicating a clearer violation of the linearity assumption. Interestingly, both exhibit patterns that resemble bimodal behavior, which may suggest that the model is underestimating their effects—possibly due to hidden structure or interaction effects. Rather than applying transformations prematurely, we next examine the additivity assumption to see whether interactions might explain these patterns.
+
+```{r linearity}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-width: 14
+#| fig-height: 18
+#| fig-align: center
+
+check_logit_linearity <- function(model) {
+  data <- model$data    
+  data <- data %>% rename_with(make.names)
+  data$log_odds <- predict(model, type = "link")
+
+  predictors <- all.vars(formula(model)[[3]])
+  numeric_vars <- predictors[sapply(data[predictors], is.numeric)]
+
+  plot_list <- list()
+
+  for (var in numeric_vars) {
+    slope <- coef(model)[var]
+    x_mean <- mean(data[[var]])
+    y_mean <- mean(data$log_odds)
+    
+    var_text <- gsub("\\.", " ", var)
+
+    p <- ggplot(data, aes_string(x = var, y = "log_odds")) +
+      geom_point(alpha = 0.2, size = 1) +
+      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+      geom_abline(intercept = y_mean - slope * x_mean, slope = slope, 
+                  color = "red", linetype = "dashed", linewidth = 1) +
+      labs(title = var_text, x = var_text,y = "Log-Odds")  +
+      theme(
+        plot.title = element_text(size = 32, face = "bold"),
+        axis.title = element_text(size = 28),
+        axis.text = element_text(size = 24)
+      ) +
+      theme_minimal()
+
+    plot_list[[var]] <- p
+  }
+
+  # Combine plots into a 2-column grid with global title and subtitle
+  wrap_plots(plot_list, ncol = 2) +
+    plot_annotation(
+      title = "Linearity Check for Logit Model",
+      subtitle = "LOESS fit (blue) vs. linear approximation (red dashed)",
+      theme = theme(
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.subtitle = element_text(size = 16)
+      )
+    )  &
+    theme(
+      plot.title = element_text(size = 16, face = "bold"),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 12)
+    )
+}
+
+check_logit_linearity(initial_model)
+```
+
+
+
+### Additivity
+
+::: {.panel-tabset}
+
+#### Identifying 2-way interactions
+
+
+To test whether any interaction terms improve model fit, we use a likelihood ratio test comparing the additive model to one with all 2-way interactions. This is preferable to AIC or BIC here, since a few strong interactions could be obscured by others that slightly worsen fit. The LRT directly tests whether **any** interaction term adds value overall.
+
+The likelihood ratio test shows that at least one interaction significantly improves model fit (p < 0.001), suggesting a violation of the additivity assumption and supporting the presence of interaction effects.
+
+```{r test_additivity}
+main_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
+
+inter_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake)^2, data = model_data, family = binomial)
+
+anova(main_model, inter_model, test = "LRT")
+```
+
+Now that we know interaction terms collectively improve model fit, we use information criteria (AIC, BIC, and Bayes Factors) to identify which specific 2-way interactions are most supported. This shifts our focus from formal testing to model selection, prioritizing parsimony and interpretability.
+
+
+```{r specific_2_way_terms}
+#| message: false
+#| warning: false
+
+# Define main additive model
+main_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake,
+                  data = model_data, family = binomial)
+
+# Predictor set
+vars <- c("Sleep.Hours", "Therapy.Sessions", "Diet.Quality", "Stress.Level", "Caffeine.Intake")
+interaction_pairs <- combn(vars, 2, simplify = FALSE)
+
+# Loop through 2-way interaction pairs
+interaction_results <- lapply(interaction_pairs, function(pair) {
+  interaction_term <- paste(pair, collapse = ":")
+  extended_formula <- as.formula(paste("AnxietyBinary ~", paste(vars, collapse = " + "), "+", interaction_term))
+  inter_model <- glm(extended_formula, data = model_data, family = binomial)
+
+  stats <- model.comparison(main_model, inter_model)$statistics # take only inter_model row
+
+  data.frame(
+    Interaction = interaction_term,
+    AIC = stats[2, ]$aic,
+    BIC = stats[2, ]$bic,
+    BayesFactor = stats[2, ]$bayes.factor,
+    p_value = stats[1, ]$p
+  )
+})
+
+# Combine all interaction models
+interaction_results_df <- do.call(rbind, interaction_results)
+
+# Sort by significance
+interaction_results_df <- interaction_results_df[order(interaction_results_df$p_value), ]
+
+
+# Add main model at the end
+baseline_row <- data.frame(
+  Interaction = "None (Additive Model)",
+  AIC = round(AIC(main_model), 3),
+  BIC = round(BIC(main_model), 3),
+  BayesFactor = NA,
+  p_value = NA
+)
+
+# Combine & Show
+datatable(rbind(baseline_row, interaction_results_df),
+          options = list(pageLength = 11))
+```
+
+
+While some interaction models showed moderate Bayes Factors (e.g., BF ≈ 5) and small BIC improvements (ΔBIC < 4), these results should be interpreted with caution given the large sample size (~11,000). At this scale, even minor departures from additivity can appear statistically significant without providing meaningful gains in interpretability or explanatory value.
+
+
+Still, while each interaction term shows only modest support on its own, their combined effect may be more substantial. Notably, interactions between `Therapy Sessions` and `Diet Quality`, `Sleep Hours` and `Therapy Sessions`, and `Sleep Hours` and `Diet Quality` each showed mild support when tested individually.
+
+The three selected interaction terms form a natural set, suggesting that together they may capture a more coherent structure in the data. To evaluate this, let's fit a model including all three pairwise interactions.
+
+#### Additive vs. Interaction Model
+
+The interaction model is statistically superior by several criteria. Compared to the additive model, it improves fit substantially with ΔBIC = 14 and Bayes Factor ≈ 990. This is strong evidence that interaction terms — such as between Sleep Hours and Therapy Sessions, or Diet Quality and Sleep — explain meaningful variance in anxiety risk.
+
+
+```{r interaction_model}
+additive_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
+
+
+interaction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality)^2 + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
+
+
+model.comparison(additive_model, interaction_model)$statistics
+```
+
+However, our primary aim is not to build a perfect predictor. Instead, we seek a model that is:
+
+- Clear enough to communicate results to a broad audience,
+- Parsimonious enough to remain stable and generalizable, and
+- Transparent enough to identify key relationships.
+
+The additive model is **deliberately oversimplified**. It ignores subtle but real interdependencies between predictors. As a result, it cannot capture context-dependent effects — for instance, how the impact of poor diet might vary depending on sleep quality or therapy engagement.
+
+Despite these limitations, the additive model has advantages:
+
+- Its structure is straightforward, allowing direct interpretation of individual predictors.
+- It facilitates communication with stakeholders unfamiliar with nonlinear or interaction-heavy models.
+- Its predictions are nearly as accurate (AUC 0.9980 vs 0.9985) despite being simpler.
+
+```{r interaction_model_performance}
+#| warning: false
+#| message: false
+
+cat("Additive model AUC:    ", round(auc_full, 4), "\n")
+cat("Interaction model AUC: ", round(auc(model_data$AnxietyBinary, predict(interaction_model, type = "response")), 4), "\n")
+```
+
+To address this tradeoff, we retain the additive model for our primary analysis, while:
+
+- Exploring key interactions in a supplementary section, and
+- Encouraging future work to consider more complex models where interpretability is not paramount.
+
+In short: this model is not a perfect mirror of the data — but it’s a deliberately polished lens, tuned to clarify rather than to capture every nuance.
+
+
+
+
+#### Interaction Plots 
+
+Although we ultimately favored the additive model for its simplicity and interpretability, visualizing the interactions still reveals meaningful structure that may inform future research or support domain understanding.
+
+```{r additivity_data}
+# Create clean binning function
+make_labeled_bins <- function(x, varname, probs = c(0, 0.33, 0.66, 1)) {
+  bins <- cut(x, breaks = quantile(x, probs = probs, na.rm = TRUE), include.lowest = TRUE)
+  levels(bins) <- paste(substr(varname, start = 1, stop = 1), "-", levels(bins))
+  return(bins)
+}
+
+# Augment dataset with binned versions
+augmented_data <- model_data %>%
+  mutate(
+    Sleep.Bin = make_labeled_bins(Sleep.Hours, "Sleep.Hours"),
+    Therapy.Bin = make_labeled_bins(Therapy.Sessions, "Therapy.Sessions"),
+    Diet.Bin = make_labeled_bins(Diet.Quality, "Diet.Quality"),
+    log_odds = predict(inter_model, type = "link")  # add logit prediction from interaction model
+  )
+```
+
+```{r additivity_slopes}
+#| eval: false
+augmented_data %>% 
+    group_by(Therapy.Bin, Diet.Bin) %>%
+    summarise(
+        corr = cor(Sleep.Hours, log_odds),
+        y_sd = sd(log_odds),
+        x_sd = sd(Sleep.Hours),
+        slope = corr *  y_sd /  x_sd
+    ) %>% 
+    select(slope, Therapy.Bin, Diet.Bin) %>%
+    pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
+    print()
+
+augmented_data %>% 
+    group_by(Sleep.Bin, Diet.Bin) %>%
+    summarise(
+        corr = cor(Therapy.Sessions, log_odds),
+        y_sd = sd(log_odds),
+        x_sd = sd(Therapy.Sessions),
+        slope = corr *  y_sd /  x_sd
+    ) %>% 
+    select(slope, Sleep.Bin, Diet.Bin) %>%
+    pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
+    print()
+
+augmented_data %>% 
+    group_by(Sleep.Bin, Therapy.Bin) %>%
+    summarise(
+        corr = cor(Diet.Quality, log_odds),
+        y_sd = sd(log_odds),
+        x_sd = sd(Diet.Quality),
+        slope = corr *  y_sd /  x_sd
+    ) %>% 
+    select(slope, Sleep.Bin, Therapy.Bin) %>%
+    pivot_wider(names_from = Sleep.Bin, values_from = slope) %>%
+    print()
+```
+
+1. Sleep Hours consistently exhibits a negative association with log-odds of high anxiety. This negative slope becomes more pronounced when both Therapy Sessions and Diet Quality are low, suggesting that adequate sleep is especially protective in less supportive therapeutic and nutritional contexts.
+
+```{r additivity_plots1}
+#| message: false
+#| warning: false
+#| fig.width: 5
+#| fig.height: 5
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+
+ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
+      geom_point(alpha = 0.15, size = 1) +
+      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+      facet_wrap(~ Therapy.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
+      labs(title = "Interaction: Sleep Hours",
+           subtitle = "LOESS (blue) vs. Linear (dashed red)",
+           x = "Sleep Hours",
+           y = "Predicted Log-Odds") +
+      theme_minimal()
+
+```
+
+
+2. Therapy Sessions typically show a mild positive slope, but this flattens or reverses (to slightly negative) under conditions of high Diet Quality and sufficient Sleep, implying that therapy's marginal contribution may diminish when other protective factors are present.
+
+
+```{r additivity_plots2}
+#| message: false
+#| warning: false
+#| fig.width: 5
+#| fig.height: 5
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
+      geom_point(alpha = 0.15, size = 1) +
+      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+      facet_wrap(~ Sleep.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
+      labs(title = "Interaction: Therapy Sessions",
+           subtitle = "LOESS (blue) vs. Linear (dashed red)",
+           x = "Therapy Sessions",
+           y = "Predicted Log-Odds") +
+      theme_minimal()
+```
+
+
+3. Diet Quality demonstrates context-dependent directionality: its slope is positive when Sleep is high and Therapy is low, but negative when Therapy is high and Sleep is low. This may point to a compensatory dynamic: when sleep or therapy are lacking, diet becomes more predictive, but when both are already sufficient, its marginal effect lessens—or even reverses.
+
+```{r additivity_plots3}
+#| message: false
+#| warning: false
+#| fig.width: 5
+#| fig.height: 5
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+ggplot(augmented_data, aes(x = Diet.Quality, y = log_odds)) +
+      geom_point(alpha = 0.15, size = 1) +
+      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+      facet_wrap(~ Therapy.Bin + Sleep.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
+      labs(title = "Interaction: Diet Quality",
+           subtitle = "LOESS (blue) vs. Linear (dashed red)",
+           x = "Diet Quality",
+           y = "Predicted Log-Odds") +
+      theme_minimal()
+```
+
+
+
+
+While these patterns aren’t strong enough to justify including interaction terms for performance, they may reflect underlying compensatory or synergistic effects between lifestyle variables. Visualizing these slopes adds interpretive nuance and may highlight thresholds or diminishing returns that are relevant for clinical or behavioral intervention.
+
+:::
+
+### No Multicollinearity
+
+
+All predictors in the model have Variance Inflation Factors (VIFs) below 1.5—well under the common threshold of 5. This suggests that multicollinearity is not a concern, and that the predictors are sufficiently independent to yield stable, interpretable coefficients.
+
+```{r vif}
+cat("Variance Inflation Factors:")
+vif(initial_model)
+```
+
+
+### Model Calibration
+
+For a logistic regression model to be interpretable, its predicted probabilities must be well-calibrated—that is, a 90% prediction should correspond to the event occurring about 90% of the time. In a well-calibrated model, predicted probabilities closely track observed event rates across the range of predictions.
+
+The following two plots visualize this calibration in complementary ways:
+
+1. **Fine-Grained Calibration Plot** (*200 quantile bins*): Predictions are grouped into 200 equally sized bins. The closer each point falls to the diagonal line, the better the alignment between predicted and observed frequencies. Deviations indicate areas of under- or over-confidence.
+
+2. **Coarse Calibration Plot** (*5% fixed bins*): Predictions are grouped into 5% intervals. Each point is labeled with its bin size, offering insight into the stability of the observed rates—smaller bins are more sensitive to noise.
+
+
+```{r calibration_plots}
+#| message: false
+#| warning: false
+#| fig-align: center
+
+pred_prob <- predict(initial_model, type = "response")
+
+cal_data <- model_data %>%
+  mutate(pred_prob = pred_prob, bin = ntile(pred_prob, 200)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_pred = mean(pred_prob),
+    obs_rate = mean(AnxietyBinary == "High Anxiety"),
+    n = n(),
+    se = sqrt(obs_rate * (1 - obs_rate) / n)
+  )
+
+# Plot
+p1 <- ggplot(cal_data, aes(x = mean_pred, y = obs_rate)) +
+  geom_point(size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40") +
+  labs(
+    title = "Fine-Grained Calibration Plot",
+    x = "Mean Predicted Probability",
+    y = "Observed Event Rate (High Anxiety)"
+  ) +
+  coord_fixed() +
+  theme_minimal()
+
+cal_data <- model_data %>%
+  mutate(pred_prob = pred_prob,
+         bin = cut(pred_prob, breaks = seq(0, 1, by = 0.05), include.lowest = TRUE)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_pred = mean(pred_prob),
+    obs_rate = mean(AnxietyBinary == "High Anxiety"),
+    n = n()
+  )
+
+
+# Plot
+p2 <- ggplot(cal_data, aes(x = mean_pred, y = obs_rate)) +
+  geom_point(size = 2) +
+  geom_text(aes(label = n), vjust = -0.8, size = 3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40") +
+  labs(
+    title = "Coarse Calibration Plot",
+    x = "Mean Predicted Probability",
+    y = "Observed Event Rate (High Anxiety)"
+  ) +
+  coord_fixed() +
+  theme_minimal()
+
+# Combine plots manually
+p1 + p2 +
+  plot_layout(ncol = 2)
+```
+
+Overall, the model’s predicted probabilities align closely with observed event rates—most points lie near the diagonal line, suggesting strong calibration. In the fine-grained plot, we see dense clusters near (0, 0) and (1, 1), and fewer points in the middle. This reflects a confident model: most predictions are close to 0 or 1, with few uncertain cases near 0.5. The coarser plot confirms this pattern and adds bin sizes, making it easier to assess the reliability of each point
+
+A few notable patterns emerge:
+
+- Bins with small sample sizes (e.g., 9, 16, 18) show more deviation from the diagonal, likely due to sampling variability.
+
+- Several mid-range points lie slightly above the line, indicating the model tends to underestimate the probability of high anxiety in those regions.
+
+- In the low-probability region near (0, 0), the observed event rate is even lower than predicted, suggesting the model slightly overestimates risk in that range.
+
+None of these deviations appear especially concerning—overall, the model’s predicted probabilities track observed rates well, supporting good calibration.
+
+### Final Model Summary
+
+Diagnostic analyses indicate that the final logistic regression model is well-calibrated, interpretable, and robust to influential observations. Residual and outlier assessments revealed a small number of plausible edge cases with minimal impact on model stability. Linearity and additivity assumptions were largely satisfied, and while several interaction terms showed mild support, their inclusion yielded negligible gains in either performance or clarity. Calibration plots confirmed strong agreement between predicted and observed probabilities.
+
+These results confirm that the model is well-suited for explanatory use — offering a stable, interpretable, and empirically justified foundation for communication and insight.
+
+## Interpreting the Final Model
+
+### Predictor Effects
+
+Now that we're confident in the quality of our model, let's take a closer look at the logistic regression equation in terms of log-odds:
+```{r model_summary}
+summary(initial_model)
+```
+We can express the model as:
+
+$$
+\begin{align*}
+\widehat{\log\left[\frac{P(\text{Anxiety} = \text{High Anxiety})}{1 - P(\text{Anxiety} = \text{High Anxiety})}\right]} =\ & -1.269 \\
+&+ 1.071\ \cdot\ \text{Therapy Sessions} \\
+&+ 0.865\ \cdot\ \text{Stress Level} \\
+&- 2.596\ \cdot\ \text{Sleep Hours} \\
+&+ 0.0106\ \cdot\ \text{Caffeine Intake} \\
+&- 0.556\ \cdot\ \text{Diet Quality}
+\end{align*}
+$$
+
+Let’s break down what each predictor means in terms of odds:
+
+```{r exp_coefficients}
+#| eval: false
+print(exp(initial_model$coefficients))
+
+print(exp(100*initial_model$coefficients[5]))
+```
+
+
+- Each additional therapy session increases the odds by a factor of ×2.92, holding all other variables constant.  
+
+- Each additional stress level increases the odds by a factor of ×2.37, holding all other variables constant.  
+
+- Each additional hour of sleep decreases the odds by a factor of ×0.075 (or roughly ÷13.4), holding all other variables constant.
+
+- Each extra milligram of caffeine increases the odds slightly (×1.011). But people usually consume caffeine in cups of coffee (≈100 mg), so let's adjust the scale into cups (100 mg). Then, one extra cup increases the odds by a factor of ×2.88 (holding all other variables constant) — a much more meaningful change.
+
+- Finally, an extra level of Diet Quality decreases the odds by a factor of ×0.573, holding all other variables constant.
+
+
+### Probability Perspective
+
+While interpreting probabilities algebraically becomes more convoluted, we can still express the model in probabilistic form using the logistic (sigmoid) transformation:
+$$
+\widehat{P(\text{Anxiety} = \text{High Anxiety})} = 
+\dfrac{1}{1 + e^{-\left(
+-1.269 
++ 1.071\cdot\text{Therapy Sessions} 
++ 0.865\cdot\text{Stress Level} 
+- 2.596\cdot\text{Sleep Hours} 
++ 0.0106\cdot\text{Caffeine Intake} 
+- 0.556\cdot\text{Diet Quality}
+\right)}}
+$$
+
+
+This sigmoid structure transforms a linear combination of predictors into a predicted probability between 0 and 1. However, when multiple predictors are involved, interpreting this formula — or visualizing individual effects — becomes substantially more complex. Predicted probabilities depend on the full combination of input values, meaning that visualizations can only capture local, conditional effects, not generalizable insights.
+
+For this reason, we focus on interpreting the odds ratios, which offer a clearer and more direct understanding of each predictor's influence, independent of arbitrary baselines. These effects — such as a 13-fold decrease in odds for each additional hour of sleep, or a near tripling of odds per extra therapy session — provide a strong and interpretable summary of the model’s core insights.
+
+In summary, while logistic regression does support probabilistic interpretation, odds-based analysis offers the most accessible and robust framing for the purposes of this analysis.
+
+## Conclusion
+
+This analysis set out to understand the factors most strongly associated with high anxiety. Using logistic regression, we developed a model that balances strong statistical performance with interpretive clarity — making it well-suited for transparent reporting and structured analysis of variable relationships.
+
+While more complex models with interaction terms yielded modest improvements in fit, they introduced interpretive overhead. We therefore retained a simpler additive model, allowing for straightforward, stable insights. To enrich this view, we analyzed and visualized key interactions separately — highlighting conditional patterns that inform, but do not complicate, the core structure.
+
+Diagnostic checks confirmed that the model is well-calibrated, resilient to outliers, and broadly stable. Though simplified by design, it offers a clear and defensible account of how behavioral and lifestyle factors relate to anxiety — and where deeper complexity begins to emerge.

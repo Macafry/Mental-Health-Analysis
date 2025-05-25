@@ -1,0 +1,787 @@
+---
+title: "Predicting Anxiety Levels across Low / Moderate Anxiety"
+author: "Ian McFarlane"
+format: 
+  html:
+    page-layout: article  
+    toc: true
+    toc-location: left
+    toc-title: "Contents"
+    toc-depth: 3
+    toc-float: true
+    toc-expand: true
+echo: false
+---
+
+```{r setup}
+#| message: false
+#| results: hide
+#| warning: false
+
+library(tidyverse)
+library(ranger)
+library(MASS)
+library(flexplot)
+library(caret)
+library(car)
+library(brant)
+library(pomcheckr)
+library(knitr)
+library(patchwork)
+```
+
+
+```{r read_data}
+#| warning: false
+
+data <- read_csv("../data/enhanced_anxiety_dataset.csv")
+```
+
+## Overview
+
+Exploratory plots revealed a strong relationship between Anxiety Level and Stress Level, providing early confidence in predictive modeling. However, before proceeding, we must consider the nature of our outcome variable. Anxiety Level is numerical, but **ordinal**—it has a meaningful order, but not necessarily equal spacing between categories. This complicates model selection, as linear regression assumes a continuous and unbounded outcome, where equal differences between values carry consistent meaning.
+
+We consider two main modeling approaches:
+
+- **Linear regression with rounding**, which is easy to interpret but not designed for ordinal data.
+
+- **Ordinal logistic regression** *(also known as the proportional odds model)*, which more accurately reflects the structure of the outcome but is harder to interpret clearly.
+
+- Alternative ordinal modeling frameworks (e.g., partial proportional odds) were not explored, as they were beyond the scope of this analysis.
+
+Although ordinal logistic regression is more appropriate in theory, its interpretation can be opaque—especially for non-technical audiences. Linear regression, while a simplification, provides direct and intuitive estimates, making it better suited to our goals, which prioritize interpretability and transparency over statistical precision.
+
+
+That said, we evaluate both models empirically before committing to one. Our first step is to determine which predictors to include. To guide this selection, we use permutation-based variable importance from a random forest model. The resulting plot highlights `Stress Level` as the most important feature. A noticeable elbow point in the importance scores—specifically between `Family History of Anxiety` and `Occupation`—provides a natural cutoff. Based on this, we include the following predictors: `Stress Level`, `Sleep Hours`, `Caffeine Intake`, `Therapy Sessions`, and `Family History of Anxiety`.
+
+```{r feature_importance}
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+model_data <- data %>% 
+    mutate(across(where(is.character), as.factor)) %>%
+    filter(`Anxiety Level (1-10)`<=7)
+
+names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
+
+model <- ranger(
+  formula = Anxiety.Level ~ .,
+  data = model_data,
+  importance = "permutation",       
+  num.trees = 500
+)
+
+imp <- data.frame(
+  Feature = names(model$variable.importance),
+  Importance = model$variable.importance
+)
+
+ggplot(imp, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Permutation Feature Importance (Random Forest)", y = "Importance", x = "") +
+  theme_minimal()
+```
+
+### Ordinal Logistic Model
+
+First, we fit the ordinal logistic regression model. The results show a clear pattern: all predictors are directionally consistent with expectations. `Stress Level`, `Caffeine Intake`, `Therapy Sessions`, and `Family History of Anxiety` are positively associated with higher anxiety levels. In contrast, `Sleep Hours` has a negative association—more sleep corresponds to lower anxiety. 
+
+```{r ordinal_model}
+# Fit ordinal logistic regression with same predictors
+ordinal_model <- polr(ordered(Anxiety.Level) ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
+                    Therapy.Sessions + Family.History.of.Anxiety, 
+                  data = model_data, Hess = TRUE)
+
+summary(ordinal_model)
+```
+
+The confusion matrix below shows that the **model performs modestly** but meaningfully better than chance in predicting anxiety levels. The overall accuracy is 0.383—well above the naïve baseline of approximately 1/7 (~14%) for a seven-class classification task. This performance is consistent with the challenges of modeling subjective human responses, where perfect classification is unlikely due to inherent noise and ambiguity.
+
+Encouragingly, for most predicted classes, **the most common true label is the correct one**, and 86.41% of predictions fall within one level of the actual value. This indicates that while the model may struggle with fine-grained distinctions, it captures the broader structure of the outcome effectively.
+
+One notable limitation is the model’s complete **failure to predict Anxiety Level 7**—the rarest category, with only 123 cases out of 9,986. This likely reflects both **class imbalance** and the ordinal model’s tendency to shrink predictions toward the center of the scale. Potential remedies include reweighting, resampling, or alternative modeling strategies that better account for the tails of the distribution.
+
+
+```{r print_cm_function}
+print_cm <- function(cm) {
+    # Capture printed output as text
+    summary_text <- capture.output(print(cm))
+    
+    # Glue relevant output together
+    new_output <-paste(summary_text[1:22], collapse = "\n")
+
+    cat(new_output)
+    # kable(as.data.frame(cm$byClass), digits = 3)
+}
+```
+
+
+```{r ordinal_model_metrics}
+#| warning: false
+#| message: false
+
+confusionMatrix(predict(ordinal_model), as.factor(model_data$Anxiety.Level)) %>% print_cm()
+
+observed_anxiety <- model_data$Anxiety.Level
+predicted_anxiety <- as.numeric(predict(ordinal_model))
+
+within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
+
+cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+```
+
+
+#### Lightweight Diagnostics
+
+We formally tested the proportional odds assumption using the Brant test. The omnibus test was significant, indicating that the assumption does not hold strictly. At the individual level, Stress Level, Sleep Hours, and Caffeine Intake also showed statistically significant violations.
+
+However, visual inspection of the empirical cumulative logits for each predictor revealed near-parallel trends across thresholds, broadly consistent with the proportional odds framework. A slight divergence in slope between the `Anxiety ≥ 2` and `Anxiety ≥ 3` thresholds is visible—particularly for Stress Level—suggesting mild non-proportionality at the lower end of the anxiety scale. Additionally, the slope for `Anxiety ≥ 7` behaves somewhat erratically, likely due to extreme class imbalance at the highest anxiety level.
+
+Taken together, these results suggest that while the proportional odds assumption is not strictly met, the observed deviations appear minor and not practically consequential. An ordinal logistic model, while not ideal for interpretability, remains an adequate modeling choice for capturing the relationship between predictors and ordinal anxiety levels.
+
+
+```{r brant_test}
+brant(ordinal_model)
+```
+
+
+```{r parallel_slopes_plot_function}
+plot_pom <- function(variable, variable_label, variable_index, pom_data) {
+    
+  plot_data <- pom_data[[variable_index]] %>%
+    pivot_longer(cols = starts_with("Anxiety.Level_>="),
+                 names_to = "Threshold",
+                 values_to = "EmpiricalLogit"
+    ) %>%
+    mutate(
+      Threshold = str_replace(Threshold, "Anxiety\\.Level_>=(\\d)", "Anxiety ≥ \\1"),
+      Group = as.numeric(!!sym(variable))        
+    ) %>%
+    filter(Threshold != "Anxiety ≥ 1")
+
+  labels <- as.character(pom_data[[variable_index]][[variable]])
+
+  p <- ggplot(plot_data, aes(x = Group, y = EmpiricalLogit, color = Threshold, group = Threshold)) +
+    geom_line(linewidth = 1.2) +
+    geom_point() +
+    scale_x_continuous(breaks = 1:length(labels), labels = labels) +
+    labs(
+      x = variable_label,
+      y = "Empirical Logit",
+      title = variable_label,
+      color = "Cumulative Threshold"
+    ) +
+    theme_minimal()
+
+  return(p)
+}
+
+```
+
+
+```{r parallel_slopes_plot}
+#| cache: true
+#| warning: false
+#| fig-width: 14
+#| fig-height: 12
+#| fig-align: center
+
+pom_data <- pomcheck(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
+                     Therapy.Sessions + Family.History.of.Anxiety,
+                     data = mutate(model_data, Anxiety.Level = as.factor(Anxiety.Level)))
+
+pom_df <- data.frame(
+    names = c("Stress.Level", "Sleep.Hours", "Caffeine.Intake",
+                     "Therapy.Sessions"),
+    labels = c("Stress Level", "Sleep Hours", "Caffeine Intake",
+                     "Therapy Sessions"),
+    pom_index = 1:4
+)
+
+plots <- pmap(pom_df, ~plot_pom(..1, ..2, ..3, pom_data))
+
+# Combine into 2-column patchwork grid
+wrap_plots(plots, ncol = 2, guides = "collect") +
+  plot_annotation(
+    title = "Empirical Logits Across Grouped Predictors",
+    subtitle = "Visual check of proportional odds assumption",
+    theme = theme(
+      plot.title = element_text(size = 20, face = "bold"),
+      plot.subtitle = element_text(size = 16)
+    )
+  ) &   
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+```
+
+
+### Linear Regression
+
+We next examine the linear regression model. Its results closely mirror those of the ordinal model: `Sleep Hours` shows a negative association with `Anxiety Level`, while `Stress Level`, `Caffeine Intake`, `Therapy Sessions`, and `Family History of Anxiety` all exhibit positive associations. The model’s $R^2$ of 0.519 suggests moderate predictive power—consistent with the classification accuracy observed earlier. This alignment indicates that, despite its misspecification, the linear regression model effectively captures the main structure of the data.
+
+```{r linear_model}
+linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=model_data)
+
+summary(linear_model)
+```
+
+The confusion matrix below also tells a similar story. The linear regression model achieves an accuracy of 0.376, closely matching the ordinal model. Once again, the most frequent prediction for each true level is typically the correct one, no observations are predicted as an Anxiety Level of 7, and 87.27% of predictions fall within one level of the true value. Taken together, these results suggest that both models perform comparably.
+
+```{r linear_model_metrics}
+#| warning: false
+#| message: false
+
+predicted_anxiety <- round(pmax(pmin(predict(linear_model), 7), 1), 0)
+confusionMatrix(as.factor(predicted_anxiety), as.factor(model_data$Anxiety.Level))  %>% print_cm()
+
+within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
+
+cat(paste0("\nCases predicted within one level of the true level: ", round(100*within_one_accuracy, 2), "%"))
+```
+
+
+However, where the linear regression model differs most from the ordinal logistic model is in its **treatment of the extremes**. The linear regression model severely **underpredicts Classes 1 and 6**. For instance, among cases truly labeled as 1, more are predicted as 3 than as 1; for true sixes, the model more frequently predicts a 4 than a 6. This reflects a well-known property of linear regression: a tendency to regress toward the mean.
+
+While alternative approaches such as weighted regression can reduce this issue, they do so by distorting the underlying data distribution or sacrificing interpretability—both of which conflict with our modeling goals. The ordinal logistic model also exhibits this bias, but to a lesser extent, owing to its structure that better respects ordinal spacing.
+
+### Comparing Interpretability: Linear vs. Ordinal
+Although the ordinal logistic model is statistically well-suited to ordered outcomes, its coefficients are often harder to interpret in practical terms. For example, the model estimates that:
+
+> Each additional hour of sleep reduces the log-odds of reporting a higher anxiety level by 0.52.
+
+While this may be meaningful to a statistician, log-odds are abstract and unintuitive for most readers. Even when translated into odds ratios—about a 40% reduction in the odds of being in a higher anxiety category—the interpretation remains ambiguous. What does “higher category” mean in practice? And how much higher?
+
+Moreover, the phrase "reporting a higher anxiety level" is conceptually fuzzy for those unfamiliar with ordinal logistic regression—it doesn't map cleanly onto expected values or real-number outcomes.
+
+By contrast, the linear model produces a more direct and accessible statement:
+
+> Each additional hour of sleep is associated with a 0.23-point decrease in expected anxiety level.
+
+This clear mapping from input units to outcome makes the results more tangible—especially for non-technical audiences. The ability to express predictor effects in everyday terms was a key reason for ultimately **favoring the linear model in this analysis, despite its formal misspecification** and its limited reliability at the edges of the scale. As we’ll explore later, the predictions themselves are inherently fuzzy, further supporting our emphasis on interpretability over classification precision. In addition, by modeling high-anxiety individuals (levels 8–10) separately, we avoid the primary predictive risk—misclassifying the people most in need of identification—and allow the linear model to focus on the more stable patterns within the moderate anxiety range.
+
+## Model Selection
+
+Now that we've selected **linear regression** as our preferred model—prioritizing parsimony and interpretability—we begin with a baseline that includes `Stress Level`, `Sleep Hours`, `Caffeine Intake`, `Therapy Sessions`, and `Family History of Anxiety`, based on prior feature importance analysis.
+
+Next, we assess whether any of these variables should be removed or if others should be added.
+
+
+### Removing Variables
+
+To evaluate whether each predictor meaningfully contributes to the model, we compare BIC and Bayes Factor values after individually dropping each one.
+
+The results below suggest that `Stress Level` is indispensable (as expected), with a BIC increase of nearly 7,000 when removed. `Sleep Hours`, `Caffeine Intake`, and `Therapy Sessions` also show strong support for inclusion based on substantial BIC increases and Bayes Factors.
+
+`Family History of Anxiety` presents weaker evidence, but the change is still large enough to justify its retention under the principle of parsimony—each variable adds unique explanatory value without unnecessarily inflating model complexity.
+
+
+
+```{r removing_variables}
+cat("Stress Level:\n")
+simplified_model <- update(linear_model, . ~ . - Stress.Level)
+print(model.comparison(simplified_model, linear_model)$statistics)
+
+cat("Sleep Hours:\n")
+simplified_model <- update(linear_model, . ~ . - Sleep.Hours)
+print(model.comparison(simplified_model, linear_model)$statistics)
+
+cat("Caffeine Intake:\n")
+simplified_model <- update(linear_model, . ~ . - Caffeine.Intake)
+print(model.comparison(simplified_model, linear_model)$statistics)
+
+cat("Therapy Sessions:\n")
+simplified_model <- update(linear_model, . ~ . - Therapy.Sessions)
+print(model.comparison(simplified_model, linear_model)$statistics)
+
+cat("Family History of Anxiety:\n")
+simplified_model <- update(linear_model, . ~ . - Family.History.of.Anxiety)
+print(model.comparison(simplified_model, linear_model)$statistics)
+```
+
+
+### Adding Variables
+
+To test whether the model could benefit from an additional predictor, we examine the next-highest ranked variable from the feature importance analysis: Occupation.
+
+Adding Occupation results in a higher BIC and a Bayes Factor favoring the original model, indicating that its inclusion does not improve model fit enough to justify the added complexity. This supports our earlier decision to treat Occupation as beyond the importance elbow point.
+
+Given this result, we retain the original model as our final specification for this analysis.
+
+
+```{r adding_variables}
+# Add Heart Rate
+occupation_added <- update(linear_model, . ~ . + Occupation)
+print(model.comparison(linear_model, occupation_added)$statistics)
+```
+
+
+## Model Diagnostics
+
+With our model selected, we now assess its diagnostics to ensure the assumptions of linear regression are reasonably satisfied and that the results are stable and interpretable. This section is organized around four diagnostic pillars:
+
+- **Error distribution checks**, including assessments of normality and homoskedasticity. While formal inference is not our focus, these checks help us understand residual behavior and identify potential misspecification.
+- **Outlier analysis**, which helps detect individual observations with high influence or poor fit that may distort coefficient estimates.
+- **Structural assumption checks**, covering linearity, additivity (no interaction terms), and multicollinearity, to confirm that the model’s functional form is appropriate for the data.
+- **Calibration assessment**, which ensures that predicted values align with observed responses and reflect meaningful expected outcomes.
+
+
+### Normality of Errors
+
+The Q-Q plot shows slight "S-bending" near the tails, indicating mild deviations from perfect normality—likely due to applying linear regression to a bounded ordinal outcome. However, the residuals remain approximately symmetric, with no significant skewness or heavy tails.
+
+
+```{r error_normality}
+#| fig-width: 14
+#| fig-height: 6
+
+# Extract residuals
+model_residuals <- resid(linear_model)
+resid_df <- data.frame(Residuals = model_residuals)
+
+# Q-Q plot
+p1 <- ggplot(resid_df, aes(sample = Residuals)) +
+  stat_qq(alpha = 0.5) +
+  stat_qq_line(color = "red") +
+  labs(title = "Q-Q Plot of Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal()
+
+# Histogram
+p2 <- ggplot(resid_df, aes(x = Residuals)) +
+  geom_histogram(aes(y = ..density..), bins = 40, fill = "steelblue", color = "white", alpha = 0.8) +
+  geom_density(color = "red", linewidth = 1) +
+  labs(title = "Histogram of Residuals", x = "Residuals", y = "Density") +
+  theme_minimal()
+
+p1 + p2 &
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+```
+### Homoskedasticity of Errors
+
+Due to the discrete and bounded nature of the outcome, the residual plot displays clear banding patterns—an expected artifact of applying linear regression to ordinal data. Nevertheless, the LOESS smoother remains essentially flat, indicating no substantial heteroskedasticity.
+
+```{r error_homoskedasticity}
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+# Prepare residual data
+resid_df <- data.frame(
+  Residuals = resid(linear_model),
+  PredictedAnxiety = predict(linear_model)
+)
+
+# Residuals vs Fitted plot
+ggplot(resid_df, aes(x = PredictedAnxiety, y = Residuals)) +
+  geom_point(alpha = 0.6, color = "black") +
+  geom_smooth(method = "loess", se = FALSE, color = "steelblue", linewidth = 1) +
+  labs(
+    title = "Residuals vs Predicted Anxiety",
+    x = "Predicted Anxiety Level",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+```
+
+### Outlier Detection
+
+To explore this possibility, we're using the same plots as in the logistic model (with the appropriate changes)
+
+The four plots include:
+
+1. Leverage vs. Cook’s Distance
+
+2. Predicted Anxiety vs. Studentized Residuals 
+
+3. Leverage vs. Studentized Residuals
+
+4. Cook’s Distance by Observation Index 
+
+```{r outlier_data}
+#| cache: true
+
+outlier_data <- model_data %>% 
+    dplyr::select(Stress.Level, Sleep.Hours, 
+    Caffeine.Intake, Therapy.Sessions, Family.History.of.Anxiety, Anxiety.Level) %>%
+  mutate(
+    Row = row_number(),
+    Leverage = hatvalues(linear_model),
+    Cook = cooks.distance(linear_model),
+    StudentizedResiduals = rstudent(linear_model),
+    PredictedAnxiety = predict(linear_model)
+  )
+```
+
+
+```{r outlier_plots}
+#| message: false
+#| warning: false
+#| layout-nrow: 2
+#| fig-width: 14
+#| fig-height: 12
+#| fig-align: center
+#| cache: true
+
+p1 <- ggplot(outlier_data, aes(x = Leverage, y = Cook)) +
+  geom_point(aes(size = abs(StudentizedResiduals)), alpha = 0.6) +
+  scale_size_continuous(name = "|Studentized Residual|") +
+  geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
+  geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "blue") +
+  geom_text(data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Leverage vs Cook’s Distance",
+       x = "Leverage (Hat Values)",
+       y = "Cook's Distance") +
+  theme_minimal()
+
+p2 <- ggplot(outlier_data, aes(x = PredictedAnxiety, y = StudentizedResiduals)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 0.75, color = "steelblue") +
+  geom_hline(yintercept = c(-3, 3), linetype = "dashed", color = "red") +
+  geom_text(data = filter(outlier_data, abs(StudentizedResiduals) > 3),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Predicted Anxiety vs Studentized Residuals",
+       x = "Predicted Anxiety Level",
+       y = "Studentized Residuals") +
+  theme_minimal()
+
+
+p3 <- ggplot(outlier_data, aes(x = Leverage, y = StudentizedResiduals)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = c(-3, 3), linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
+  geom_text(data = filter(outlier_data, abs(StudentizedResiduals) > 3 | Leverage > 0.04),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Leverage vs Studentized Residuals",
+       x = "Leverage (Hat Values)",
+       y = "Studentized Residuals") +
+  theme_minimal()
+
+p4 <- ggplot(outlier_data, aes(x = Row, y = Cook)) +
+  geom_segment(aes(x = Row, xend = Row, y = 0, yend = Cook),
+               color = "steelblue", linewidth = 0.4) +
+  geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "red") +
+  geom_text(data = filter(outlier_data, Cook > 0.02),
+            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
+  labs(title = "Cook’s Distance by Observation",
+       x = "Observation Index",
+       y = "Cook's Distance") +
+  coord_cartesian(ylim = c(0, max(outlier_data$Cook) * 1.1)) +
+  theme_minimal()
+
+
+combined_plot <- (p1 + p2) / (p3 + p4)
+
+combined_plot &
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+```
+
+Most observations appear well behaved, with no evidence of influential outliers. Cook’s distances are uniformly low (maximum < 0.003), indicating no individual point exerts undue influence on the model’s estimates. A small number of observations exceed the ±3 threshold for studentized residuals, which is expected in a dataset of this size. These high-residual points generally have low leverage and do not coincide with extreme influence measures.
+
+The absence of high-leverage, high-residual combinations, combined with the overall stability of influence metrics, suggests that the model is not disproportionately shaped by any small subset of observations. While residual banding is present due to the ordinal nature of the outcome, it does not raise concern about outlier-driven distortion.
+
+A few observations did exhibit either larger residuals or higher-than-average leverage, but none met criteria for being both poorly predicted and highly influential. These points were retained, as they are consistent with the expected variability in the data and do not materially affect model fit.
+
+### Linearity
+
+Since linearity concerns only numerical predictors, there is no need to assess this assumption for categorical variables such as Family History of Anxiety. For the remaining continuous predictors, plots of each variable against predicted anxiety show strong linear trends. Although slight deviations appear in the tails—particularly at extreme values—these are minor and do not suggest meaningful nonlinearity.
+
+```{r linearity}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-width: 14
+#| fig-height: 12
+#| fig-align: center
+
+
+check_linearity <- function(model) {
+  data <- model$model    
+  data <- data %>% rename_with(make.names)
+  
+  data$predicted_value <- predict(model)
+  
+  predictors <- all.vars(formula(model)[[3]])
+  numeric_vars <- predictors[sapply(data[predictors], is.numeric)]
+  
+  plot_list <- list()
+  
+  for (var in numeric_vars) {
+    slope <- coef(model)[var]
+    x_mean <- mean(data[[var]], na.rm = TRUE)
+    y_mean <- mean(data$predicted_value, na.rm = TRUE)
+    
+    var_text <- gsub("\\.", " ", var)
+
+    # Plot
+    p <- ggplot(data, aes_string(x = var, y = "predicted_value")) +
+      geom_point(alpha = 0.2, size = 1) +
+      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+      geom_abline(intercept = y_mean - slope * x_mean, slope = slope, 
+                  color = "red", linetype = "dashed", linewidth = 1) +
+      labs(title = var_text, x = var_text, y = "Predicted Anxiety") +
+      theme_minimal()
+    
+    plot_list[[var]] <- p
+  }
+  
+  # Combine plots into a 2-column grid with global title and subtitle
+  wrap_plots(plot_list, ncol = 2) +
+    plot_annotation(
+      title = "Linearity Check for Regression Model",
+      subtitle = "LOESS fit (blue) vs. Predicted Anxiety (red dashed)",
+      theme = theme(
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.subtitle = element_text(size = 16)
+      )
+    )  &
+    theme(
+      plot.title = element_text(size = 16, face = "bold"),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 12)
+    )
+}
+
+check_linearity(linear_model)
+```
+
+
+### Additivity
+
+A likelihood ratio test showed no evidence that including interaction terms improves model fit (p = 0.84), suggesting that additivity is a reasonable working assumption for this analysis. While interactions could exist, their effects appear negligible in this context.
+```{r additivity}
+main_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=model_data)
+
+inter_model <- lm(Anxiety.Level ~ (Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety)^2, data=model_data)
+
+anova(main_model, inter_model, test = "LRT")
+```
+
+### No Multicollinearity
+All predictors in the model have variance inflation factors (VIFs) below 1.5—well below the commonly used threshold of 5. This suggests that multicollinearity is not a concern and that the predictors are sufficiently independent to yield stable, interpretable coefficients.
+
+```{r vif}
+cat("Variance Inflation Factors:")
+vif(linear_model)
+```
+
+### Model Calibration
+
+Because our goal is interpretation, it's essential to verify that the model’s predicted values are meaningful representations of expected outcomes. A predicted Anxiety Level of 5.4, while not an actual possible score, reflects the **expected value** for someone with those characteristics. For the predicted values to be interpretable, the model must be **well-calibrated**—that is, predictions should closely align with the average observed outcomes.
+
+To assess calibration, we compared the model’s predictions to the actual mean Anxiety Levels within quantile-based bins of predicted values. The resulting calibration plot shows a near-perfect alignment along the identity line, suggesting that the model’s predictions closely approximate average observed outcomes across the range of predicted values. This supports the claim that the linear regression model provides reliable and interpretable estimates across the full range of predictions
+
+
+```{r calibration_plot}
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+# Bin into quantile-based bins (e.g., 20 bins)
+cal_data <- model_data %>% 
+  mutate(
+    predicted_anxiety = predict(linear_model),
+    actual_anxiety = Anxiety.Level
+  ) %>%
+  mutate(bin = ntile(predicted_anxiety, 20)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_pred = mean(predicted_anxiety),
+    mean_actual = mean(actual_anxiety),
+    n = n()
+  )
+
+# Plot
+ggplot(cal_data, aes(x = mean_pred, y = mean_actual)) +
+  geom_point(size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40") +
+  coord_fixed() +
+  labs(
+    title = "Calibration Plot: Predicted vs Actual Anxiety",
+    x = "Mean Predicted Anxiety",
+    y = "Mean Actual Anxiety"
+  ) +
+  theme_minimal()
+```
+
+### Final Model Summary
+
+Despite the model’s intentional misspecification—applying linear regression to a bounded ordinal outcome—diagnostics suggest that all key assumptions are reasonably satisfied. Residuals are approximately normal and homoskedastic. No influential outliers are present, and both linearity and additivity hold for the numeric predictors. Multicollinearity is negligible.. Taken together, these results indicate that the model is stable and interpretable, and that the tradeoff in favor of simplicity has not compromised its validity for exploratory or communicative purposes.
+
+## From Regression to Classification
+
+To convert the linear regression model's continuous predictions into discrete classes, we apply simple rounding. While this may reduce predictive precision, it avoids the added complexity of optimizing thresholds—especially since such methods often bias results toward the majority class in boundary regions.
+
+### Classification Performance
+
+Although we previously reviewed classification performance in the overview section, we briefly revisit the results here for context.
+
+
+> The linear regression model achieves an accuracy of 0.376, closely matching the ordinal model. Once again, the most frequent prediction for each true level is typically the correct one, no observations are predicted as an Anxiety Level of 7, and 87.27% of predictions fall within one level of the true value. 
+
+
+
+```{r model_metrics_reminder}
+#| warning: false
+
+y_true <- as.factor(model_data$Anxiety.Level)
+y_pred_numeric <- pmin(pmax(predict(linear_model), 1), 7) # clamps values into [1,7]
+y_pred_class <- as.factor(round(y_pred_numeric, 0))
+
+confusionMatrix(y_pred_class, y_true)  %>% print_cm()
+
+cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+```
+
+Now that we've revisited the results, let’s take a closer look at the **within-one accuracy** metric. At first glance, this may seem like an overly generous statistic. However, it’s important to recognize that **humans tend to struggle to reliably distinguish between adjacent levels on fine-grained ordinal scales**—especially when the number of levels exceeds 7.
+
+
+
+> "Humans have difficulty reliably distinguishing between more than 5 to 7 categories on a rating scale, with reliability and interpretability decreasing as the number of levels increases."
+> — Miller, G. A. (1956). *"The Magical Number Seven, Plus or Minus Two: Some Limits on Our Capacity for Processing Information." Psychological Review, 63*(2), 81–97.
+
+
+Although our model is trained on a 1–7 scale, the original data was recorded on a 1–10 scale, likely introducing **subjective noise** and **imprecision** in how respondents rated themselves. In this context, a within-one accuracy of 84% better captures the model’s practical performance than strict classification accuracy.
+
+That said, this metric is indeed optimistic, and we acknowledge its limitations. Still, given the inherent ambiguity in human-rated scales, within-one accuracy offers a more forgiving and arguably more realistic view of model effectiveness.
+
+
+### Probabilistic Framing
+
+Moreover, from the diagnostics we know that the errors roughly follow a normal distribution. Actually, they roughly follow a standard normal distribution, which gives us the following insights:
+
+
+- **Residuals within ±0.5** (i.e., correct prediction after rounding): 
+`r round(100*mean(between(linear_model$residuals, -0.5, 0.5)),2)`%
+
+- **Residuals within ±1.0** (empirical rule ≈ 68%): 
+`r round(100*mean(between(linear_model$residuals, -1.0, 1.0)),2)`%
+
+- **Residuals within ±1.5 (within-one threshold for classification):** 
+`r round(100*mean(between(linear_model$residuals, -1.5, 1.5)),2)`%
+
+- **Residuals within ±2.0 (empirical rule ≈ 95%):** 
+`r round(100*mean(between(linear_model$residuals, -2.0, 2.0)),2)`%
+
+
+```{r normal_residuals}
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+resids <- linear_model$residuals
+resid_mean <- mean(resids)
+resid_sd <- sd(resids)
+
+ggplot(data.frame(resid = resids), aes(x = resid)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = c(-0.5, 0.5), linetype = "dashed", color = "darkblue", size = 1.2) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dotted", color = "darkred", size = 1.2) +
+  annotate("text", x = 0.55, y = 600, label = "±0.5 (Correct Prediction)", vjust = 1.5, hjust = 0, color = "darkblue", linewidth = 3.8) +
+  annotate("text", x = 1.55, y = 550, label = "±1.5 (Within-One Prediction)", vjust = 1.5, hjust = 0, color = "darkred", linewidth = 3.8) +
+  labs(
+    title = "Distribution of Residuals",
+    subtitle = paste0("Mean = ", round(resid_mean, 4), 
+                      ", SD = ", round(resid_sd, 4)),
+    x = "Residual",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+The residuals from the linear regression model approximate a normal distribution, which supports our use of the Gaussian framework to describe prediction uncertainty. That said, this behavior reflects both the underlying signal and the constraints of modeling a bounded ordinal outcome with a continuous method. In particular, residuals near the edges of the anxiety scale (1 and 7) are limited by ceiling and floor effects, which may distort the distribution’s tails.
+
+For this reason, the normal approximation should be seen as a useful simplification rather than a strict assumption. It allows us to frame uncertainty in relatable terms (e.g., "usually within ±1"), while recognizing that such interpretations are approximate. In this exploratory context, we find that this framing aids communication without meaningfully distorting the model’s behavior.
+
+
+## Interpreting the Final Model
+
+### Predictor Effects
+
+Now that we're confident in the quality of our model, let's take a closer look at the regression equation:
+```{r model_summary}
+summary(linear_model)
+```
+
+$$
+\begin{align*}
+\widehat{\text{Anxiety Level}} =\ & 2.503 \\
+&+ 0.339\ \cdot\ \text{Stress Level} \\
+&- 0.230\ \cdot\ \text{Sleep Hours} \\
+&+ 0.00140\ \cdot\ \text{Caffeine Intake} \\
+&+ 0.0915\ \cdot\ \text{Therapy Sessions} \\
+&+ 0.116\ \cdot\ \text{Family History of Anxiety}_{\text{Yes}}
+\end{align*}
+$$
+
+The accompanying interpretations are as follows:
+
+- Each additional Stress Level increases the expected Anxiety Level by 0.339, holding all other variables constant.
+
+- Each additional hour of Sleep decreases the expected Anxiety Level by 0.230, holding all other variables constant.
+
+- Each additional Therapy Session increases the expected Anxiety Level by 0.0915, holding all other variables constant.
+
+- Each additional milligram of Caffeine increases the expected Anxiety Level by 0.00140, holding all other variables constant. In practical terms, an additional cup of coffee (≈100 mg) increases the expected Anxiety Level by 0.140.
+
+- Individuals with a Family History of Anxiety predicted to score 0.116 points higher on the Anxiety Level scale than those without, controlling for the other variables.
+
+
+While the scale of the traditional interpretation doesn't yield a straightforward one-to-one correspondence between predictors and Anxiety Levels, it still offers valuable insight: anxiety is multifaceted, and no single variable fully explains it. 
+
+- When we increased Stress Level by 3 units, while holding all else constant, the predicted Anxiety Level increased by about 1 point. Similarly, increasing Sleep Hours by 4 led to roughly a 1-point decrease in predicted Anxiety. These align closely with the effect sizes in the model and illustrate the trade-offs.
+
+- In contrast, it would take about 10 additional therapy sessions or the equivalent of 7 extra cups of coffee to shift the predicted Anxiety Level by just 1 point. This confirms that while statistically significant, these variables have relatively modest effects in practical terms.
+
+- As for Family History of Anxiety, the model predicts a small increase—just over a tenth of a point. However, in cases where someone’s predicted anxiety is right on the edge between two categories, this small nudge can be enough to shift the prediction from one level to the next. So, while not a strong driver on its own, it may still influence certain borderline predictions.
+
+This, however, does not mean that variables like Therapy Sessions, Caffeine Intake, and Family History are irrelevant to prediction—only that their individual effects on Anxiety Level are modest. 
+
+### Simplified Model Comparison
+
+To assess the contribution of lower-impact variables, we fit a simplified linear model using only `Stress Level` and `Sleep Hours`. While this model maintained comparable overall accuracy (35.7%) and within-one accuracy (85.5%), it struggled even more at the extremes—particularly for Classes 1 and 6—further emphasizing the linear model's tendency to regress toward the mean. This comparison reinforces that even modest predictors can improve edge-case performance and stabilize the model's behavior, supporting their inclusion.
+
+
+```{r simple_model}
+#| warning: false
+#| message: false
+
+simple_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours, data=model_data)
+
+summary(simple_model)
+
+predicted_anxiety <- round(pmax(pmin(predict(simple_model), 7), 1), 0)
+confusionMatrix(as.factor(predicted_anxiety), as.factor(model_data$Anxiety.Level))  %>% print_cm()
+
+within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
+
+cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+```
+
+
+
+## Conclusion
+
+In modeling moderate anxiety levels (1–7), we evaluated both ordinal logistic regression and linear regression. While the ordinal approach more closely matches the structure of the outcome variable, it posed interpretive challenges and did not offer meaningful improvements in predictive performance. The linear model, despite its formal misspecification, produced comparable accuracy, more transparent diagnostics, and a direct mapping from predictors to expected values—making it the more appropriate choice given the goals of this analysis.
+
+The final model revealed consistent and intuitive relationships: higher stress, greater caffeine intake, more therapy sessions, and a family history of anxiety were all associated with increased anxiety levels, while more sleep was linked to lower levels. Although the individual effects were modest, together they provided a stable and interpretable picture of the factors most associated with anxiety in this dataset. Diagnostic checks supported the model’s overall validity: residuals were well-behaved, multicollinearity was negligible, and most predictions fell within one level of the true anxiety score.
+
+While the linear model underpredicts at the extremes—particularly for rare or low-frequency anxiety levels—this limitation is expected given the bounded, subjective nature of the response variable. A strictly ordinal logistic model, while more theoretically appropriate, would have constrained our ability to inspect residual behavior and model calibration in the same interpretable way. Ultimately, the linear regression model strikes a practical balance between statistical structure and communicative clarity. 

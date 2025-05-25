@@ -1,0 +1,120 @@
+---
+title: "Failing to Predict across High Anxiety"
+author: "Ian McFarlane"
+format: 
+  html:
+    page-layout: article
+echo: false
+---
+
+Exploratory analysis revealed little evidence of a relationship between high anxiety levels (8–10) and the available predictors, raising concerns about whether these classes contain enough signal to support meaningful modeling.
+
+```{r setup}
+#| message: false
+#| results: hide
+#| warning: false
+
+library(tidyverse)
+library(DT)
+library(ranger)
+library(partykit)
+library(infotheo)
+library(caret)
+```
+
+```{r read_data}
+#| warning: false
+
+data <- read_csv("../data/enhanced_anxiety_dataset.csv")
+```
+
+## Mutual Information for Anxiety Level (8-10)
+
+To evaluate this more formally, we computed the mutual information between Anxiety Level and each predictor—a measure of how much information a feature provides about the target. All values were approximately 0.01 or lower, indicating minimal predictive power.
+
+```{r mutual_information}
+#| warning: false
+#| echo: false
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+model_data <- data %>% 
+    mutate(across(where(is.character), as.factor)) %>%
+    filter(`Anxiety Level (1-10)`>=8)
+
+names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
+
+disc_data <- select(model_data, -Anxiety.Level) %>% discretize(disc = "equalfreq", nbins = 10)
+
+mi_scores <- sapply(disc_data, function(x) mutinformation(x, model_data$Anxiety.Level))
+
+mi <- data.frame(
+  Feature = names(mi_scores),
+  MutualInformation = mi_scores
+)
+
+ggplot(mi, aes(x = reorder(Feature, MutualInformation), y = MutualInformation)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(y = "Mutual Information", x = "") +
+  theme_minimal()
+```
+
+
+
+Permutation tests confirmed these results. Only one predictor—`Diet Quality`—yielded a statistically significant mutual information score (MI ≈ 0.01, p < 0.01), suggesting a weak but detectable association. However, the effect is negligible in practical terms. All other predictors had MI < 0.01 and p-values > 0.10, reinforcing the conclusion that high anxiety levels cannot be reliably predicted from the available features.
+
+```{r permutation_mutual_information}
+#| warning: false
+#| echo: false
+#| cache: true
+
+n_perm <- 1000
+perm_mi <- replicate(n_perm, {
+  shuffled_target <- sample(model_data$Anxiety.Level)
+  sapply(disc_data, function(x) mutinformation(x, shuffled_target))
+})
+
+p_vals <- sapply(1:length(disc_data), function(i) {
+  mean(perm_mi[i, ] >= mi_scores[i])  # proportion of permuted MI ≥ observed MI
+})
+
+mi_significance <- data.frame(
+    Mutual_Information = round(mi_scores, 5),
+    P_value = p_vals
+)
+
+mi_significance %>% arrange(-mi_scores) %>% datatable()
+```
+
+
+
+## Trying to Overfit a Model
+
+As a diagnostic exercise, we intentionally overfit a decision tree model to probe for residual signal, using highly permissive parameters (`mincriterion = 0.5`, `minsplit = 5`). The outcome (Anxiety Level 8–10) was treated as categorical to increase sensitivity to subtle distinctions.
+
+Even with relaxed constraints, the tree produced no splits—implying that no features provided even marginal discriminatory value. The confusion matrix confirms this: the model defaulted to predicting the majority class (8) for all observations, relying entirely on class frequency rather than learned structure.
+
+```{r overfit_tree}
+#| warning: false
+#| echo: false
+#| out-width: "70%"
+#| fig-align: center
+#| dpi: 300
+#| cache: true
+
+tree_ord <- ctree(
+    as.factor(Anxiety.Level) ~ ., 
+    data = model_data,
+    control = ctree_control(mincriterion = 0.5, minsplit = 5)
+)
+
+plot(tree_ord)
+confusionMatrix(predict(tree_ord, model_data), as.ordered(model_data$Anxiety.Level))
+```
+
+## Conclusion
+
+The consistent failure of both information-theoretic and model-based methods confirms that anxiety levels 8–10 cannot be reliably distinguished from one another based on the available predictors. These observations form an indistinct cluster with no usable internal structure. Accordingly, we model them as a single high-anxiety class using binary logistic regression. For all remaining levels, we apply a separate linear regression to capture finer-grained variation. This stacked modeling approach respects the limits of the data while maximizing interpretability where possible.

@@ -1,0 +1,372 @@
+---
+title: "Exploratory Data Analysis of Anxiety Predictors"
+author: "Ian McFarlane"
+format: 
+  html:
+    page-layout: article  
+    toc: true
+    toc-location: left
+    toc-title: "Contents"
+    toc-depth: 3
+    toc-float: true
+    toc-expand: true
+echo: false
+---
+
+```{r setup}
+#| message: false
+#| results: hide
+#| warning: false
+
+library(tidyverse)
+library(RColorBrewer)
+library(knitr)
+library(DT)
+library(e1071)
+library(htmltools)
+```
+
+```{r read_data}
+#| warning: false
+
+data <- read_csv("..data/enhanced_anxiety_dataset.csv")
+```
+
+This exploratory data analysis examines how a range of behavioral, physiological, and demographic predictors relate to self-reported anxiety levels (1–10). The goal is to surface patterns, distributions, and potential structural distinctions that may guide future modeling decisions.
+
+## Visualizations
+
+### Single Variable Plots
+
+
+To guide univariate visualizations, predictors were grouped into five structural types: Categorical (Few), Categorical (Many), Ordinal, Discrete, and Continuous. Visualizations were matched accordingly—e.g., bar plots for discrete or ordinal variables, and histograms with overlaid density curves for continuous ones (10 bins, adjust = 1.5) to smooth sampling artifacts without distorting shape. This approach balances visual clarity with representational accuracy.
+
+Most variables are roughly uniform or flat. Notable exceptions include Sleep Hours (approximately normal), Caffeine Intake (slightly left-skewed), and Physical Activity and Therapy Sessions (strongly right-skewed, which may hint towards log transformation when modeling). Anxiety Level, while also right-skewed, is treated as an ordinal response and shouldn't be transformed.
+
+
+Use the dropdown below to explore each variable’s distribution and summary statistics interactively.
+
+
+```{r single_plot_selector}
+#| warning: false
+#| results: asis
+#| echo: false
+
+columns <- names(data)
+
+tags$select(
+  id = "singlePlotSelector",
+  class = "form-control",
+  style = "width: 300px; padding: 6px; font-size: 1em;",
+  onchange = "showSinglePlot(this.value)",
+  lapply(names(data), function(name) {
+    tags$option(value = paste0("single-", name), name)
+  })
+) %>% print()
+```
+
+
+
+```{r single_variable_statistics}
+single_variable_statistics <- function(data, name, var_type) {
+  column <- data[[name]]
+  
+  # Normalize to internal groupings
+  type_group <- case_when(
+    var_type %in% c("Categorical (Few)", "Categorical (Many)", "Ordinal") ~ "Categorical",
+    var_type %in% c("Continuous", "Discrete") ~ "Continuous",
+    TRUE ~ "Unknown"
+  )
+  
+  if (type_group == "Unknown") {
+    stop(paste("Unrecognized variable type:", var_type))
+  }
+
+  if (type_group == "Categorical") {
+    freq <- as.data.frame(table(column))
+    
+    cat("**Counts:**\n\n")
+    cat(knitr::kable(t(table(column))), sep = "\n")
+    cat("\n\n")
+    
+  } else if (type_group == "Continuous") {
+    summary_vec <- c(
+      Mean     = round(mean(column), 3),
+      Median   = round(median(column), 3),
+      SD       = round(sd(column), 3),
+      Skewness = round(e1071::skewness(column), 3)
+    )
+    
+    cat("**Summary Statistics: **\n\n")
+    cat(knitr::kable(t(summary_vec)), sep = "\n")
+    cat("\n\n")
+    
+  } 
+}
+```
+
+```{r single_variable_plots}
+color_scale_13 <- c(brewer.pal(12, "Set3"), "#999999")
+
+single_variable_plot <- function(data, name, var_type) {
+  column <- data[[name]]
+  
+  # Open div container
+  
+  
+  # Create appropriate plot for variable
+  plot <- switch(var_type,
+    
+    "Discrete" = ggplot(data, aes(x = !!sym(name))) +
+      geom_bar(stat = "count", color = 1, fill = "lightblue") +
+      scale_x_discrete(limits = as.character(min(column):max(column))) +
+      labs(x=name, y="Frequency") +   
+      theme_minimal(),
+    
+    "Ordinal" = ggplot(data, aes(x = !!sym(name))) +
+      geom_bar(stat = "count", color = 1, fill = "lightblue") +
+      labs(x=name, y="Frequency") +
+      theme_minimal(),
+    
+    "Continuous" = ggplot(data, aes(x = !!sym(name))) +
+      geom_histogram(aes(y = ..density..), color = 1, bins = 10, fill = "lightblue") +
+      geom_density(adjust = 1.5) +
+      labs(x=name, y="Density") +
+      theme_minimal(),
+    
+    "Categorical (Few)" = ggplot(data, aes(x = !!sym(name), fill = !!sym(name))) +
+      geom_bar(stat = "count", color = 1) +
+      labs(x=name, y="Frequency") +
+      theme_minimal(),
+    
+    "Categorical (Many)" = ggplot(data, aes(x = fct_infreq(!!sym(name)), fill = fct_infreq(!!sym(name)))) +
+      geom_bar(stat = "count", color = 1) +
+      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      scale_fill_manual(values = color_scale_13) +
+      labs(x=name, y="Frequency", fill=name) +
+      theme_minimal(),
+    
+    stop(paste("Unrecognized variable type:", var_type))
+  )
+
+  print(plot)
+}
+```
+
+```{r variable_tmeta_data}
+variable_types <- list(
+  "Categorical (Few)" = c("Gender", "Smoking", "Family History of Anxiety",
+                          "Dizziness", "Medication", "Recent Major Life Event"),
+  "Categorical (Many)" = c("Occupation"),
+  "Ordinal" = c("Stress Level (1-10)", "Sweating Level (1-5)", 
+                "Diet Quality (1-10)", "Anxiety Level (1-10)"),
+  "Discrete" = c("Alcohol Consumption (drinks/week)", 
+                 "Therapy Sessions (per month)", "Breathing Rate (breaths/min)"),
+  "Continuous" = c("Age", "Sleep Hours", "Physical Activity (hrs/week)", 
+                   "Caffeine Intake (mg/day)", "Heart Rate (bpm)")
+)
+
+# Build metadata frame
+meta_data <- imap_dfr(variable_types, ~ data.frame(
+  variable = .x,
+  type = .y,
+  stringsAsFactors = FALSE
+))
+```
+
+
+```{r render_single_plots}
+#| warning: false
+#| results: asis
+#| dpi: 300
+#| cache: true
+
+pwalk(meta_data, function(variable, type) {
+  # Open outer container
+  cat('<div id="single-', variable, '" class="single-plot-div" style="display:none;">\n', sep = "")
+  
+  # Title
+  cat("####", variable, "\n\n")
+
+  # Open centered inner container
+  cat('<div style="width: 100%; padding: 0 15%; text-align: center;">\n')
+  
+  # Print plot (separate from cat!)
+  single_variable_plot(data, variable, type)
+  
+  # Close centered inner container
+  cat('</div>\n')
+
+  # Print statistics
+  single_variable_statistics(data, variable, type)
+  
+  # Close outer container
+  cat("</div>\n\n")
+})
+```
+
+
+### Anxiety Level vs Other Variable Plots
+
+To explore how each variable relates to the response variable Anxiety Level (1–10), we selected visualization strategies matched to variable type. While ordinal, Anxiety Level can flexibly be treated as categorical or numeric depending on context. For example, heatmaps were used for ordinal/discrete pairs, while continuous predictors were paired with boxplots, and categorical variables with bar or density plots. These choices maximize interpretability, particularly given the discrete nature of anxiety ratings.
+
+Use the dropdown below to explore each variable’s distribution and summary statistics interactively.
+
+
+
+```{r double_plot_selector}
+#| warning: false
+#| results: asis
+
+valid_columns <- setdiff(columns, "Anxiety Level (1-10)")
+
+tags$select(
+  id = "doublePlotSelector",
+  class = "form-control",
+  style = "width: 300px; padding: 6px; font-size: 1em;",
+  onchange = "showDoublePlot(this.value)",
+  lapply(valid_columns, function(name) {
+    tags$option(value = paste0("double-", name), name)
+  })
+) %>% print()
+```
+
+
+```{r double_variable_plot}
+double_variable_plot <- function(data, variable, var_type) {
+  anxiety_var <- "Anxiety Level (1-10)"
+  
+  if (variable == anxiety_var) return(NULL)  # Skip self-comparison
+  
+  column <- data[[variable]]
+  
+  if (var_type == "Ordinal" || var_type == "Discrete") {
+    # Heatmap of counts for Anxiety × Variable
+    plot_data <- data %>% 
+      group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>% 
+      tally() %>% 
+      rename("Anxiety" = "Anxiety Level (1-10)", "Count" = "n") %>%
+      mutate(Anxiety = as.factor(Anxiety), name = as.factor(!!sym(variable)))
+    
+    ggplot(plot_data, aes(x = Anxiety, y = !!sym(variable), fill = Count)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient(low = "white", high = "steelblue") +
+      scale_x_discrete(limits = as.character(1:10)) +
+      theme_minimal()
+    
+  } else if (var_type == "Continuous") {
+    ggplot(data, aes(x = as.factor(!!sym(anxiety_var)), y = !!sym(variable))) +
+      geom_boxplot(color = 1, fill = "lightblue") +
+      labs(x = anxiety_var) +
+      theme_minimal()
+    
+  } else if (var_type == "Categorical (Few)") {
+    ggplot(data, aes(x = as.factor(!!sym(anxiety_var)), fill = !!sym(variable))) +
+      geom_bar(stat = "count", position = "fill", color = 1) +
+      scale_x_discrete(limits = as.character(1:10)) +
+      labs(x = anxiety_var, y = "Proportion") +
+      theme_minimal()
+    
+  } else if (var_type == "Categorical (Many)") {
+    ggplot(data, aes(x = !!sym(anxiety_var), color = !!sym(variable))) +
+      geom_density(linewidth = 0.75, adjust = 1.5) +
+      scale_x_discrete(limits = as.character(1:10)) +
+      scale_color_manual(values = color_scale_13) +
+      theme_minimal()
+    
+  } else {
+    stop(paste("Unrecognized variable type:", var_type))
+  }
+}
+```
+
+
+<!-- Generate plots inside div containers -->
+
+```{r render_double_plots}
+#| warning: false
+#| results: asis
+#| dpi: 300
+#| cache: true
+
+pwalk(meta_data, function(variable, type) {
+  if (variable == "Anxiety Level (1-10)") return(NULL)
+  
+  # Open outer container
+  cat(paste0('<div id="double-', variable, '" class="double-plot-div" style="display:none;">\n'))
+  
+  # Title
+  cat(paste("#### Anxiety Level (1-10) vs", variable, "\n\n"))
+  
+  # Open centered inner container
+  cat('<div style="width: 100%; padding: 0 15%; text-align: center;">\n')
+  
+  # Plot
+  print(double_variable_plot(data, variable, type))
+  
+  # Close centered inner container
+  cat('</div>\n')
+
+  # Close outer container
+  cat("</div>\n")
+})
+```
+
+
+
+The visualizations suggest that anxiety levels 8–10 may form a distinct subgroup. Across many variables, these levels appear to behave differently from levels 1–7. We summarize the key differences below.
+
+#### Categorical Variables
+- `Gender`, `Smoking`, `Dizziness`, `Medication`, and `Recent Major Life Event` display internally consistent distributions within levels 1–7 and within 8–10 — but the proportions differ markedly between these two ranges.
+
+- `Family History of Anxiety` shows a clear increasing trend with Anxiety Level, which plateaus at higher levels.
+
+- `Occupation` appears to have minimal association with anxiety — inter-group distributions are largely overlapping.
+
+
+#### Numeric and Ordinal Variables
+- `Age`, `Sleep Hours`, `Physical Activity`, and `Heart Rate` show relatively stable averages within levels 1–7, then shift to consistently different values for levels 8–10 — again supporting a two-regime structure.
+
+- `Caffeine Intake` increases with anxiety level but levels off at the top three — similar to the Family History trend.
+
+- `Stress Level` increases steadily with anxiety through level 6, has sparse data at level 7, and becomes uniformly high in the top three.
+
+- `Therapy Sessions` follows a bimodal distribution with respect to anxiety. The lower anxiety group (1–7) is characterized by an approximately a concentrated cluster around low session counts (≈1/month), while levels 8–10 show a broader, less structured spread across session counts from 4 to 9. This separation suggests two distinct behavioral regimes — one centered and structured, the other elevated and diffuse.
+
+- `Alcohol Consumption`, `Breathing Rate`, `Sweating Level`, and `Diet Quality` don’t show clear trends across the full scale but stand out for a different reason: none of the participants at levels 8–10 fall into the "healthy" range for these variables.
+
+
+
+### Modeling Implications
+
+The analysis suggests a clear divide in how predictors relate to `Anxiety Level`: responses in the 8–10 range show different patterns than those in the 1–7 range across many variables. These differences are substantial enough to warrant treating the groups separately in modeling.
+
+To address this, we adopt a stacked modeling strategy:
+
+- A **logistic model** first distinguishes between Low / Moderate Anxiety (levels 1–7) and High Anxiety (levels 8–10).
+- Then, two separate models are used:
+  - One to predict specific anxiety levels within the **Low / Moderate group**.
+  - Another trained only on the **High Anxiety group**.
+
+This setup allows each model to focus on patterns that are internally consistent within its group, rather than forcing a single model to bridge competing dynamics. While this approach introduces additional complexity, it offers gains in both interpretability and performance. The specific challenges and decisions for each stage will be addressed in the modeling sections that follow.
+
+<!-- Render a default plots, let it be age for both selects -->
+```{=html}
+<script>
+
+function showDoublePlot(id) {
+  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+function showSinglePlot(id) {
+  document.querySelectorAll('.single-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    showSinglePlot('single-Age');
+    showDoublePlot('double-Age');
+})
+</script>
+```
