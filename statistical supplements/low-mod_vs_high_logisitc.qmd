@@ -1,5 +1,5 @@
 ---
-title: "Predicting Low / Moderate Anxiety vs High Anxiety"
+title: "Predicting Low / Moderate vs High Anxiety"
 author: "Ian McFarlane"
 format: 
   html:
@@ -550,9 +550,9 @@ The likelihood ratio test shows that at least one interaction significantly impr
 ```{r test_additivity}
 main_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
 
-inter_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake)^2, data = model_data, family = binomial)
+interaction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake)^2, data = model_data, family = binomial)
 
-anova(main_model, inter_model, test = "LRT")
+anova(main_model, interaction_model, test = "LRT")
 ```
 
 Now that we know interaction terms collectively improve model fit, we use information criteria (AIC, BIC, and Bayes Factors) to identify which specific 2-way interactions are most supported. This shifts our focus from formal testing to model selection, prioritizing parsimony and interpretability.
@@ -574,9 +574,9 @@ interaction_pairs <- combn(vars, 2, simplify = FALSE)
 interaction_results <- lapply(interaction_pairs, function(pair) {
   interaction_term <- paste(pair, collapse = ":")
   extended_formula <- as.formula(paste("AnxietyBinary ~", paste(vars, collapse = " + "), "+", interaction_term))
-  inter_model <- glm(extended_formula, data = model_data, family = binomial)
+  interaction_model <- glm(extended_formula, data = model_data, family = binomial)
 
-  stats <- model.comparison(main_model, inter_model)$statistics # take only inter_model row
+  stats <- model.comparison(main_model, interaction_model)$statistics # take only interaction_model row
 
   data.frame(
     Interaction = interaction_term,
@@ -681,7 +681,7 @@ augmented_data <- model_data %>%
     Sleep.Bin = make_labeled_bins(Sleep.Hours, "Sleep.Hours"),
     Therapy.Bin = make_labeled_bins(Therapy.Sessions, "Therapy.Sessions"),
     Diet.Bin = make_labeled_bins(Diet.Quality, "Diet.Quality"),
-    log_odds = predict(inter_model, type = "link")  # add logit prediction from interaction model
+    log_odds = predict(interaction_model, type = "link")  # add logit prediction from interaction model
   )
 ```
 
@@ -726,7 +726,7 @@ augmented_data %>%
 
 1. Sleep Hours consistently exhibits a negative association with log-odds of high anxiety. This negative slope becomes more pronounced when both Therapy Sessions and Diet Quality are low, suggesting that adequate sleep is especially protective in less supportive therapeutic and nutritional contexts.
 
-```{r additivity_plots1}
+```{r additivity_plots_sleep}
 #| message: false
 #| warning: false
 #| fig.width: 5
@@ -754,7 +754,7 @@ ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
 2. Therapy Sessions typically show a mild positive slope, but this flattens or reverses (to slightly negative) under conditions of high Diet Quality and sufficient Sleep, implying that therapy's marginal contribution may diminish when other protective factors are present.
 
 
-```{r additivity_plots2}
+```{r additivity_plots_therapy}
 #| message: false
 #| warning: false
 #| fig.width: 5
@@ -779,7 +779,7 @@ ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
 
 3. Diet Quality demonstrates context-dependent directionality: its slope is positive when Sleep is high and Therapy is low, but negative when Therapy is high and Sleep is low. This may point to a compensatory dynamic: when sleep or therapy are lacking, diet becomes more predictive, but when both are already sufficient, its marginal effect lessens—or even reverses.
 
-```{r additivity_plots3}
+```{r additivity_plots_diet}
 #| message: false
 #| warning: false
 #| fig.width: 5

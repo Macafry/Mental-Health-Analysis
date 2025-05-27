@@ -1,5 +1,5 @@
 ---
-title: "Predicting Anxiety Levels across Low / Moderate Anxiety"
+title: "Predicting across Low / Moderate Axniety Levels"
 author: "Ian McFarlane"
 format: 
   html:
@@ -98,9 +98,9 @@ ordinal_model <- polr(ordered(Anxiety.Level) ~ Stress.Level + Sleep.Hours + Caff
 summary(ordinal_model)
 ```
 
-The confusion matrix below shows that the **model performs modestly** but meaningfully better than chance in predicting anxiety levels. The overall accuracy is 0.383—well above the naïve baseline of approximately 1/7 (~14%) for a seven-class classification task. This performance is consistent with the challenges of modeling subjective human responses, where perfect classification is unlikely due to inherent noise and ambiguity.
+The confusion matrix below shows that the **model performs modestly** but meaningfully better than chance in predicting anxiety levels. The overall accuracy is 38.3%—well above the naïve baseline of predicting the majority class (24.2%). This performance is consistent with the challenges of modeling subjective human responses, where perfect classification is unlikely due to inherent noise and ambiguity.
 
-Encouragingly, for most predicted classes, **the most common true label is the correct one**, and 86.41% of predictions fall within one level of the actual value. This indicates that while the model may struggle with fine-grained distinctions, it captures the broader structure of the outcome effectively.
+Encouragingly, for most predicted classes, **the most common true label is the correct one**, and 86.4% of predictions fall within one level of the actual value. This indicates that while the model may struggle with fine-grained distinctions, it captures the broader structure of the outcome effectively.
 
 One notable limitation is the model’s complete **failure to predict Anxiety Level 7**—the rarest category, with only 123 cases out of 9,986. This likely reflects both **class imbalance** and the ordinal model’s tendency to shrink predictions toward the center of the scale. Potential remedies include reweighting, resampling, or alternative modeling strategies that better account for the tails of the distribution.
 
@@ -232,7 +232,7 @@ linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake 
 summary(linear_model)
 ```
 
-The confusion matrix below also tells a similar story. The linear regression model achieves an accuracy of 0.376, closely matching the ordinal model. Once again, the most frequent prediction for each true level is typically the correct one, no observations are predicted as an Anxiety Level of 7, and 87.27% of predictions fall within one level of the true value. Taken together, these results suggest that both models perform comparably.
+The confusion matrix below also tells a similar story. The linear regression model achieves an accuracy of 37.6%, closely matching the ordinal model. Once again, the most frequent prediction for each true level is typically the correct one, no observations are predicted as an Anxiety Level of 7, and 87.3% of predictions fall within one level of the true value. Taken together, these results suggest that both models perform comparably.
 
 ```{r linear_model_metrics}
 #| warning: false
@@ -658,7 +658,7 @@ Now that we've revisited the results, let’s take a closer look at the **within
 > — Miller, G. A. (1956). *"The Magical Number Seven, Plus or Minus Two: Some Limits on Our Capacity for Processing Information." Psychological Review, 63*(2), 81–97.
 
 
-Although our model is trained on a 1–7 scale, the original data was recorded on a 1–10 scale, likely introducing **subjective noise** and **imprecision** in how respondents rated themselves. In this context, a within-one accuracy of 84% better captures the model’s practical performance than strict classification accuracy.
+Although our model is trained on a 1–7 scale, the original data was recorded on a 1–10 scale, likely introducing **subjective noise** and **imprecision** in how respondents rated themselves. In this context, a within-one accuracy of 87% better captures the model’s practical performance than strict classification accuracy.
 
 That said, this metric is indeed optimistic, and we acknowledge its limitations. Still, given the inherent ambiguity in human-rated scales, within-one accuracy offers a more forgiving and arguably more realistic view of model effectiveness.
 

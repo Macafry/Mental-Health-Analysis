@@ -1,5 +1,5 @@
 ---
-title: "Exploratory Data Analysis of Anxiety Predictors"
+title: "Exploratory Data Analysis of Anxiety and Predictors"
 author: "Ian McFarlane"
 format: 
   html:
@@ -29,7 +29,7 @@ library(htmltools)
 ```{r read_data}
 #| warning: false
 
-data <- read_csv("..data/enhanced_anxiety_dataset.csv")
+data <- read_csv("../data/enhanced_anxiety_dataset.csv")
 ```
 
 This exploratory data analysis examines how a range of behavioral, physiological, and demographic predictors relate to self-reported anxiety levels (1–10). The goal is to surface patterns, distributions, and potential structural distinctions that may guide future modeling decisions.
@@ -234,49 +234,50 @@ tags$select(
 
 ```{r double_variable_plot}
 double_variable_plot <- function(data, variable, var_type) {
-  anxiety_var <- "Anxiety Level (1-10)"
-  
-  if (variable == anxiety_var) return(NULL)  # Skip self-comparison
-  
-  column <- data[[variable]]
-  
-  if (var_type == "Ordinal" || var_type == "Discrete") {
-    # Heatmap of counts for Anxiety × Variable
-    plot_data <- data %>% 
-      group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>% 
-      tally() %>% 
-      rename("Anxiety" = "Anxiety Level (1-10)", "Count" = "n") %>%
-      mutate(Anxiety = as.factor(Anxiety), name = as.factor(!!sym(variable)))
+  if (variable == "Anxiety Level (1-10)") return(NULL)  # Skip self-comparison
     
-    ggplot(plot_data, aes(x = Anxiety, y = !!sym(variable), fill = Count)) +
-      geom_tile(color = "white") +
-      scale_fill_gradient(low = "white", high = "steelblue") +
-      scale_x_discrete(limits = as.character(1:10)) +
-      theme_minimal()
+  type_group <- case_when(
+    var_type %in% c("Discrete", "Ordinal") ~ "Heatmap",
+    TRUE ~ var_type
+  )    
+  
+  switch(type_group,
+    "Heatmap" = {
+      plot_data <- data %>% 
+        group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>% 
+        tally() %>% 
+        rename("Anxiety" = "Anxiety Level (1-10)", "Count" = "n") %>%
+        mutate(Anxiety = as.factor(Anxiety), name = as.factor(!!sym(variable)))
+      
+      ggplot(plot_data, aes(x=Anxiety, y=!!sym(variable), fill = Count)) +
+        geom_tile(color = "white") +
+        scale_fill_gradient(low = "white", high = "steelblue") +
+        scale_x_discrete(limits = as.character(1:10)) +
+        theme_minimal()
+    },
     
-  } else if (var_type == "Continuous") {
-    ggplot(data, aes(x = as.factor(!!sym(anxiety_var)), y = !!sym(variable))) +
+    "Continuous" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`), 
+                                    y=!!sym(variable))) +
       geom_boxplot(color = 1, fill = "lightblue") +
-      labs(x = anxiety_var) +
-      theme_minimal()
+      labs(x = "Anxiety Level (1-10)") +
+      theme_minimal(),
     
-  } else if (var_type == "Categorical (Few)") {
-    ggplot(data, aes(x = as.factor(!!sym(anxiety_var)), fill = !!sym(variable))) +
+    "Categorical (Few)" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`),
+                                           fill=!!sym(variable))) +
       geom_bar(stat = "count", position = "fill", color = 1) +
       scale_x_discrete(limits = as.character(1:10)) +
-      labs(x = anxiety_var, y = "Proportion") +
-      theme_minimal()
+      labs(x = "Anxiety Level (1-10)", y = "Proportion") +
+      theme_minimal(),
     
-  } else if (var_type == "Categorical (Many)") {
-    ggplot(data, aes(x = !!sym(anxiety_var), color = !!sym(variable))) +
+    "Categorical (Many)" = ggplot(data, aes(x = `Anxiety Level (1-10)`, 
+                                            color = !!sym(variable))) +
       geom_density(linewidth = 0.75, adjust = 1.5) +
       scale_x_discrete(limits = as.character(1:10)) +
       scale_color_manual(values = color_scale_13) +
-      theme_minimal()
+      theme_minimal(),
     
-  } else {
     stop(paste("Unrecognized variable type:", var_type))
-  }
+  )
 }
 ```
 
