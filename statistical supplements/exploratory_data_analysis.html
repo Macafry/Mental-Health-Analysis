@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.4.549">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Ian McFarlane">
+
+<title>Exploratory Data Analysis of Anxiety and Predictors</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="exploratory_data_analysis_files/libs/clipboard/clipboard.min.js"></script>
+<script src="exploratory_data_analysis_files/libs/quarto-html/quarto.js"></script>
+<script src="exploratory_data_analysis_files/libs/quarto-html/popper.min.js"></script>
+<script src="exploratory_data_analysis_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="exploratory_data_analysis_files/libs/quarto-html/anchor.min.js"></script>
+<link href="exploratory_data_analysis_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="exploratory_data_analysis_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="exploratory_data_analysis_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="exploratory_data_analysis_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="exploratory_data_analysis_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body>
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article toc-left">
+<div id="quarto-sidebar-toc-left" class="sidebar toc-left">
+  <nav id="TOC" role="doc-toc" class="toc-active" data-toc-expanded="99">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#visualizations" id="toc-visualizations" class="nav-link active" data-scroll-target="#visualizations">Visualizations</a>
+  <ul class="collapse">
+  <li><a href="#single-variable-plots" id="toc-single-variable-plots" class="nav-link" data-scroll-target="#single-variable-plots">Single Variable Plots</a></li>
+  <li><a href="#anxiety-level-vs-other-variable-plots" id="toc-anxiety-level-vs-other-variable-plots" class="nav-link" data-scroll-target="#anxiety-level-vs-other-variable-plots">Anxiety Level vs Other Variable Plots</a></li>
+  <li><a href="#modeling-implications" id="toc-modeling-implications" class="nav-link" data-scroll-target="#modeling-implications">Modeling Implications</a></li>
+  </ul></li>
+  </ul>
+</nav>
+</div>
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Exploratory Data Analysis of Anxiety and Predictors</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Ian McFarlane </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>This exploratory data analysis examines how a range of behavioral, physiological, and demographic predictors relate to self-reported anxiety levels (1–10). The goal is to surface patterns, distributions, and potential structural distinctions that may guide future modeling decisions.</p>
+<section id="visualizations" class="level2">
+<h2 class="anchored" data-anchor-id="visualizations">Visualizations</h2>
+<section id="single-variable-plots" class="level3">
+<h3 class="anchored" data-anchor-id="single-variable-plots">Single Variable Plots</h3>
+<p>To guide univariate visualizations, predictors were grouped into five structural types: Categorical (Few), Categorical (Many), Ordinal, Discrete, and Continuous. Visualizations were matched accordingly—e.g., bar plots for discrete or ordinal variables, and histograms with overlaid density curves for continuous ones (10 bins, adjust = 1.5) to smooth sampling artifacts without distorting shape. This approach balances visual clarity with representational accuracy.</p>
+<p>Most variables are roughly uniform or flat. Notable exceptions include Sleep Hours (approximately normal), Caffeine Intake (slightly left-skewed), and Physical Activity and Therapy Sessions (strongly right-skewed, which may hint towards log transformation when modeling). Anxiety Level, while also right-skewed, is treated as an ordinal response and shouldn’t be transformed.</p>
+<p>Use the dropdown below to explore each variable’s distribution and summary statistics interactively.</p>
+<p><select id="singlePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showSinglePlot(this.value)"> <option value="single-Age">Age</option> <option value="single-Gender">Gender</option> <option value="single-Occupation">Occupation</option> <option value="single-Sleep Hours">Sleep Hours</option> <option value="single-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option> <option value="single-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option> <option value="single-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option> <option value="single-Smoking">Smoking</option> <option value="single-Family History of Anxiety">Family History of Anxiety</option> <option value="single-Stress Level (1-10)">Stress Level (1-10)</option> <option value="single-Heart Rate (bpm)">Heart Rate (bpm)</option> <option value="single-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option> <option value="single-Sweating Level (1-5)">Sweating Level (1-5)</option> <option value="single-Dizziness">Dizziness</option> <option value="single-Medication">Medication</option> <option value="single-Therapy Sessions (per month)">Therapy Sessions (per month)</option> <option value="single-Recent Major Life Event">Recent Major Life Event</option> <option value="single-Diet Quality (1-10)">Diet Quality (1-10)</option> <option value="single-Anxiety Level (1-10)">Anxiety Level (1-10)</option> </select></p>
+<div id="single-Gender" class="single-plot-div" style="display:none;">
+<section id="gender" class="level4">
+<h4 class="anchored" data-anchor-id="gender">Gender</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-1.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Female</th>
+<th style="text-align: right;">Male</th>
+<th style="text-align: right;">Other</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">3730</td>
+<td style="text-align: right;">3657</td>
+<td style="text-align: right;">3613</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Smoking" class="single-plot-div" style="display:none;">
+<section id="smoking" class="level4">
+<h4 class="anchored" data-anchor-id="smoking">Smoking</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-2.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">No</th>
+<th style="text-align: right;">Yes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5221</td>
+<td style="text-align: right;">5779</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Family History of Anxiety" class="single-plot-div" style="display:none;">
+<section id="family-history-of-anxiety" class="level4">
+<h4 class="anchored" data-anchor-id="family-history-of-anxiety">Family History of Anxiety</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-3.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">No</th>
+<th style="text-align: right;">Yes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5153</td>
+<td style="text-align: right;">5847</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Dizziness" class="single-plot-div" style="display:none;">
+<section id="dizziness" class="level4">
+<h4 class="anchored" data-anchor-id="dizziness">Dizziness</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-4.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">No</th>
+<th style="text-align: right;">Yes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5328</td>
+<td style="text-align: right;">5672</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Medication" class="single-plot-div" style="display:none;">
+<section id="medication" class="level4">
+<h4 class="anchored" data-anchor-id="medication">Medication</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-5.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">No</th>
+<th style="text-align: right;">Yes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5334</td>
+<td style="text-align: right;">5666</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Recent Major Life Event" class="single-plot-div" style="display:none;">
+<section id="recent-major-life-event" class="level4">
+<h4 class="anchored" data-anchor-id="recent-major-life-event">Recent Major Life Event</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-6.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">No</th>
+<th style="text-align: right;">Yes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5377</td>
+<td style="text-align: right;">5623</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Occupation" class="single-plot-div" style="display:none;">
+<section id="occupation" class="level4">
+<h4 class="anchored" data-anchor-id="occupation">Occupation</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-7.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 7%">
+<col style="width: 4%">
+<col style="width: 6%">
+<col style="width: 8%">
+<col style="width: 10%">
+<col style="width: 6%">
+<col style="width: 8%">
+<col style="width: 5%">
+<col style="width: 5%">
+<col style="width: 9%">
+<col style="width: 7%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Artist</th>
+<th style="text-align: right;">Athlete</th>
+<th style="text-align: right;">Chef</th>
+<th style="text-align: right;">Doctor</th>
+<th style="text-align: right;">Engineer</th>
+<th style="text-align: right;">Freelancer</th>
+<th style="text-align: right;">Lawyer</th>
+<th style="text-align: right;">Musician</th>
+<th style="text-align: right;">Nurse</th>
+<th style="text-align: right;">Other</th>
+<th style="text-align: right;">Scientist</th>
+<th style="text-align: right;">Student</th>
+<th style="text-align: right;">Teacher</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">888</td>
+<td style="text-align: right;">822</td>
+<td style="text-align: right;">858</td>
+<td style="text-align: right;">842</td>
+<td style="text-align: right;">833</td>
+<td style="text-align: right;">838</td>
+<td style="text-align: right;">809</td>
+<td style="text-align: right;">892</td>
+<td style="text-align: right;">861</td>
+<td style="text-align: right;">840</td>
+<td style="text-align: right;">832</td>
+<td style="text-align: right;">878</td>
+<td style="text-align: right;">807</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Stress Level (1-10)" class="single-plot-div" style="display:none;">
+<section id="stress-level-1-10" class="level4">
+<h4 class="anchored" data-anchor-id="stress-level-1-10">Stress Level (1-10)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-8.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">1</th>
+<th style="text-align: right;">2</th>
+<th style="text-align: right;">3</th>
+<th style="text-align: right;">4</th>
+<th style="text-align: right;">5</th>
+<th style="text-align: right;">6</th>
+<th style="text-align: right;">7</th>
+<th style="text-align: right;">8</th>
+<th style="text-align: right;">9</th>
+<th style="text-align: right;">10</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">978</td>
+<td style="text-align: right;">999</td>
+<td style="text-align: right;">964</td>
+<td style="text-align: right;">976</td>
+<td style="text-align: right;">1037</td>
+<td style="text-align: right;">998</td>
+<td style="text-align: right;">1006</td>
+<td style="text-align: right;">1326</td>
+<td style="text-align: right;">1335</td>
+<td style="text-align: right;">1381</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Sweating Level (1-5)" class="single-plot-div" style="display:none;">
+<section id="sweating-level-1-5" class="level4">
+<h4 class="anchored" data-anchor-id="sweating-level-1-5">Sweating Level (1-5)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-9.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">1</th>
+<th style="text-align: right;">2</th>
+<th style="text-align: right;">3</th>
+<th style="text-align: right;">4</th>
+<th style="text-align: right;">5</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1978</td>
+<td style="text-align: right;">2092</td>
+<td style="text-align: right;">2323</td>
+<td style="text-align: right;">2279</td>
+<td style="text-align: right;">2328</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Diet Quality (1-10)" class="single-plot-div" style="display:none;">
+<section id="diet-quality-1-10" class="level4">
+<h4 class="anchored" data-anchor-id="diet-quality-1-10">Diet Quality (1-10)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-10.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">1</th>
+<th style="text-align: right;">2</th>
+<th style="text-align: right;">3</th>
+<th style="text-align: right;">4</th>
+<th style="text-align: right;">5</th>
+<th style="text-align: right;">6</th>
+<th style="text-align: right;">7</th>
+<th style="text-align: right;">8</th>
+<th style="text-align: right;">9</th>
+<th style="text-align: right;">10</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1281</td>
+<td style="text-align: right;">1291</td>
+<td style="text-align: right;">1254</td>
+<td style="text-align: right;">1260</td>
+<td style="text-align: right;">994</td>
+<td style="text-align: right;">985</td>
+<td style="text-align: right;">991</td>
+<td style="text-align: right;">960</td>
+<td style="text-align: right;">1002</td>
+<td style="text-align: right;">982</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Anxiety Level (1-10)" class="single-plot-div" style="display:none;">
+<section id="anxiety-level-1-10" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10">Anxiety Level (1-10)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-11.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Counts:</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">1</th>
+<th style="text-align: right;">2</th>
+<th style="text-align: right;">3</th>
+<th style="text-align: right;">4</th>
+<th style="text-align: right;">5</th>
+<th style="text-align: right;">6</th>
+<th style="text-align: right;">7</th>
+<th style="text-align: right;">8</th>
+<th style="text-align: right;">9</th>
+<th style="text-align: right;">10</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1039</td>
+<td style="text-align: right;">1756</td>
+<td style="text-align: right;">2407</td>
+<td style="text-align: right;">2416</td>
+<td style="text-align: right;">1629</td>
+<td style="text-align: right;">616</td>
+<td style="text-align: right;">123</td>
+<td style="text-align: right;">363</td>
+<td style="text-align: right;">329</td>
+<td style="text-align: right;">322</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Alcohol Consumption (drinks/week)" class="single-plot-div" style="display:none;">
+<section id="alcohol-consumption-drinksweek" class="level4">
+<h4 class="anchored" data-anchor-id="alcohol-consumption-drinksweek">Alcohol Consumption (drinks/week)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-12.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">9.702</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">5.69</td>
+<td style="text-align: right;">-0.023</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Therapy Sessions (per month)" class="single-plot-div" style="display:none;">
+<section id="therapy-sessions-per-month" class="level4">
+<h4 class="anchored" data-anchor-id="therapy-sessions-per-month">Therapy Sessions (per month)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-13.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">2.428</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">2.183</td>
+<td style="text-align: right;">1.035</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Breathing Rate (breaths/min)" class="single-plot-div" style="display:none;">
+<section id="breathing-rate-breathsmin" class="level4">
+<h4 class="anchored" data-anchor-id="breathing-rate-breathsmin">Breathing Rate (breaths/min)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-14.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">20.958</td>
+<td style="text-align: right;">21</td>
+<td style="text-align: right;">5.16</td>
+<td style="text-align: right;">-0.141</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Age" class="single-plot-div" style="display:none;">
+<section id="age" class="level4">
+<h4 class="anchored" data-anchor-id="age">Age</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-15.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">40.242</td>
+<td style="text-align: right;">40</td>
+<td style="text-align: right;">13.236</td>
+<td style="text-align: right;">0.097</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Sleep Hours" class="single-plot-div" style="display:none;">
+<section id="sleep-hours" class="level4">
+<h4 class="anchored" data-anchor-id="sleep-hours">Sleep Hours</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-16.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">6.651</td>
+<td style="text-align: right;">6.7</td>
+<td style="text-align: right;">1.228</td>
+<td style="text-align: right;">-0.224</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Physical Activity (hrs/week)" class="single-plot-div" style="display:none;">
+<section id="physical-activity-hrsweek" class="level4">
+<h4 class="anchored" data-anchor-id="physical-activity-hrsweek">Physical Activity (hrs/week)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-17.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">2.942</td>
+<td style="text-align: right;">2.8</td>
+<td style="text-align: right;">1.828</td>
+<td style="text-align: right;">0.507</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Caffeine Intake (mg/day)" class="single-plot-div" style="display:none;">
+<section id="caffeine-intake-mgday" class="level4">
+<h4 class="anchored" data-anchor-id="caffeine-intake-mgday">Caffeine Intake (mg/day)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-18.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">286.09</td>
+<td style="text-align: right;">273</td>
+<td style="text-align: right;">144.813</td>
+<td style="text-align: right;">0.324</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+<div id="single-Heart Rate (bpm)" class="single-plot-div" style="display:none;">
+<section id="heart-rate-bpm" class="level4">
+<h4 class="anchored" data-anchor-id="heart-rate-bpm">Heart Rate (bpm)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_single_plots-19.png" class="img-fluid" width="2100">
+</div>
+<p><strong>Summary Statistics: </strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Mean</th>
+<th style="text-align: right;">Median</th>
+<th style="text-align: right;">SD</th>
+<th style="text-align: right;">Skewness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">90.916</td>
+<td style="text-align: right;">92</td>
+<td style="text-align: right;">17.326</td>
+<td style="text-align: right;">-0.119</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+</section>
+<section id="anxiety-level-vs-other-variable-plots" class="level3">
+<h3 class="anchored" data-anchor-id="anxiety-level-vs-other-variable-plots">Anxiety Level vs Other Variable Plots</h3>
+<p>To explore how each variable relates to the response variable Anxiety Level (1–10), we selected visualization strategies matched to variable type. While ordinal, Anxiety Level can flexibly be treated as categorical or numeric depending on context. For example, heatmaps were used for ordinal/discrete pairs, while continuous predictors were paired with boxplots, and categorical variables with bar or density plots. These choices maximize interpretability, particularly given the discrete nature of anxiety ratings.</p>
+<p>Use the dropdown below to explore each variable’s distribution and summary statistics interactively.</p>
+<p><select id="doublePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showDoublePlot(this.value)"> <option value="double-Age">Age</option> <option value="double-Gender">Gender</option> <option value="double-Occupation">Occupation</option> <option value="double-Sleep Hours">Sleep Hours</option> <option value="double-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option> <option value="double-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option> <option value="double-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option> <option value="double-Smoking">Smoking</option> <option value="double-Family History of Anxiety">Family History of Anxiety</option> <option value="double-Stress Level (1-10)">Stress Level (1-10)</option> <option value="double-Heart Rate (bpm)">Heart Rate (bpm)</option> <option value="double-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option> <option value="double-Sweating Level (1-5)">Sweating Level (1-5)</option> <option value="double-Dizziness">Dizziness</option> <option value="double-Medication">Medication</option> <option value="double-Therapy Sessions (per month)">Therapy Sessions (per month)</option> <option value="double-Recent Major Life Event">Recent Major Life Event</option> <option value="double-Diet Quality (1-10)">Diet Quality (1-10)</option> </select></p>
+<!-- Generate plots inside div containers -->
+<div id="double-Gender" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-gender" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-gender">Anxiety Level (1-10) vs Gender</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-1.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Smoking" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-smoking" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-smoking">Anxiety Level (1-10) vs Smoking</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-2.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Family History of Anxiety" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-family-history-of-anxiety" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-family-history-of-anxiety">Anxiety Level (1-10) vs Family History of Anxiety</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-3.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Dizziness" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-dizziness" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-dizziness">Anxiety Level (1-10) vs Dizziness</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-4.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Medication" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-medication" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-medication">Anxiety Level (1-10) vs Medication</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-5.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Recent Major Life Event" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-recent-major-life-event" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-recent-major-life-event">Anxiety Level (1-10) vs Recent Major Life Event</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-6.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Occupation" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-occupation" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-occupation">Anxiety Level (1-10) vs Occupation</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-7.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Stress Level (1-10)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-stress-level-1-10" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-stress-level-1-10">Anxiety Level (1-10) vs Stress Level (1-10)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-8.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Sweating Level (1-5)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-sweating-level-1-5" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-sweating-level-1-5">Anxiety Level (1-10) vs Sweating Level (1-5)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-9.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Diet Quality (1-10)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-diet-quality-1-10" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-diet-quality-1-10">Anxiety Level (1-10) vs Diet Quality (1-10)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-10.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Alcohol Consumption (drinks/week)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-alcohol-consumption-drinksweek" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-alcohol-consumption-drinksweek">Anxiety Level (1-10) vs Alcohol Consumption (drinks/week)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-11.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Therapy Sessions (per month)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-therapy-sessions-per-month" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-therapy-sessions-per-month">Anxiety Level (1-10) vs Therapy Sessions (per month)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-12.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Breathing Rate (breaths/min)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-breathing-rate-breathsmin" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-breathing-rate-breathsmin">Anxiety Level (1-10) vs Breathing Rate (breaths/min)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-13.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Age" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-age" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-age">Anxiety Level (1-10) vs Age</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-14.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Sleep Hours" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-sleep-hours" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-sleep-hours">Anxiety Level (1-10) vs Sleep Hours</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-15.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Physical Activity (hrs/week)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-physical-activity-hrsweek" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-physical-activity-hrsweek">Anxiety Level (1-10) vs Physical Activity (hrs/week)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-16.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Caffeine Intake (mg/day)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-caffeine-intake-mgday" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-caffeine-intake-mgday">Anxiety Level (1-10) vs Caffeine Intake (mg/day)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-17.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<div id="double-Heart Rate (bpm)" class="double-plot-div" style="display:none;">
+<section id="anxiety-level-1-10-vs-heart-rate-bpm" class="level4">
+<h4 class="anchored" data-anchor-id="anxiety-level-1-10-vs-heart-rate-bpm">Anxiety Level (1-10) vs Heart Rate (bpm)</h4>
+<div style="width: 100%; padding: 0 15%; text-align: center;">
+<img src="exploratory_data_analysis_files/figure-html/render_double_plots-18.png" class="img-fluid" width="2100">
+</div>
+</section>
+</div>
+<p>The visualizations suggest that anxiety levels 8–10 may form a distinct subgroup. Across many variables, these levels appear to behave differently from levels 1–7. We summarize the key differences below.</p>
+<section id="categorical-variables" class="level4">
+<h4 class="anchored" data-anchor-id="categorical-variables">Categorical Variables</h4>
+<ul>
+<li><p><code>Gender</code>, <code>Smoking</code>, <code>Dizziness</code>, <code>Medication</code>, and <code>Recent Major Life Event</code> display internally consistent distributions within levels 1–7 and within 8–10 — but the proportions differ markedly between these two ranges.</p></li>
+<li><p><code>Family History of Anxiety</code> shows a clear increasing trend with Anxiety Level, which plateaus at higher levels.</p></li>
+<li><p><code>Occupation</code> appears to have minimal association with anxiety — inter-group distributions are largely overlapping.</p></li>
+</ul>
+</section>
+<section id="numeric-and-ordinal-variables" class="level4">
+<h4 class="anchored" data-anchor-id="numeric-and-ordinal-variables">Numeric and Ordinal Variables</h4>
+<ul>
+<li><p><code>Age</code>, <code>Sleep Hours</code>, <code>Physical Activity</code>, and <code>Heart Rate</code> show relatively stable averages within levels 1–7, then shift to consistently different values for levels 8–10 — again supporting a two-regime structure.</p></li>
+<li><p><code>Caffeine Intake</code> increases with anxiety level but levels off at the top three — similar to the Family History trend.</p></li>
+<li><p><code>Stress Level</code> increases steadily with anxiety through level 6, has sparse data at level 7, and becomes uniformly high in the top three.</p></li>
+<li><p><code>Therapy Sessions</code> follows a bimodal distribution with respect to anxiety. The lower anxiety group (1–7) is characterized by an approximately a concentrated cluster around low session counts (≈1/month), while levels 8–10 show a broader, less structured spread across session counts from 4 to 9. This separation suggests two distinct behavioral regimes — one centered and structured, the other elevated and diffuse.</p></li>
+<li><p><code>Alcohol Consumption</code>, <code>Breathing Rate</code>, <code>Sweating Level</code>, and <code>Diet Quality</code> don’t show clear trends across the full scale but stand out for a different reason: none of the participants at levels 8–10 fall into the “healthy” range for these variables.</p></li>
+</ul>
+</section>
+</section>
+<section id="modeling-implications" class="level3">
+<h3 class="anchored" data-anchor-id="modeling-implications">Modeling Implications</h3>
+<p>The analysis suggests a clear divide in how predictors relate to <code>Anxiety Level</code>: responses in the 8–10 range show different patterns than those in the 1–7 range across many variables. These differences are substantial enough to warrant treating the groups separately in modeling.</p>
+<p>To address this, we adopt a stacked modeling strategy:</p>
+<ul>
+<li>A <strong>logistic model</strong> first distinguishes between Low / Moderate Anxiety (levels 1–7) and High Anxiety (levels 8–10).</li>
+<li>Then, two separate models are used:
+<ul>
+<li>One to predict specific anxiety levels within the <strong>Low / Moderate group</strong>.</li>
+<li>Another trained only on the <strong>High Anxiety group</strong>.</li>
+</ul></li>
+</ul>
+<p>This setup allows each model to focus on patterns that are internally consistent within its group, rather than forcing a single model to bridge competing dynamics. While this approach introduces additional complexity, it offers gains in both interpretability and performance. The specific challenges and decisions for each stage will be addressed in the modeling sections that follow.</p>
+<!-- Render a default plots, let it be age for both selects -->
+<script>
+
+function showDoublePlot(id) {
+  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+function showSinglePlot(id) {
+  document.querySelectorAll('.single-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    showSinglePlot('single-Age');
+    showDoublePlot('double-Age');
+})
+</script>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
