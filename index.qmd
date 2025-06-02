@@ -51,9 +51,9 @@ he dataset included self-reported anxiety levels rated from 1 (very low) to 10 (
 #| cache: true
 
 ggplot(data, aes(x = `Anxiety Level (1-10)`)) +
-      geom_bar(stat = "count", color = 1, fill = "lightblue") +
-      labs(y="Frequency", title="Observed distribution of Anxiety Levels") +
-      theme_minimal()
+  geom_bar(stat = "count", color = 1, fill = "lightblue") +
+  labs(y = "Frequency", title = "Observed distribution of Anxiety Levels") +
+  theme_minimal()
 ```
 
 
@@ -78,54 +78,58 @@ When we look at these variables side by side, a few patterns begin to emerge:
 
 ```{r double_variable_plots}
 double_variable_plot <- function(data, variable, var_type) {
-  if (variable == "Anxiety Level (1-10)") return(NULL)  # Skip self-comparison
-    
+  if (variable == "Anxiety Level (1-10)") {
+    return(NULL)
+  } # Skip self-comparison
+
   type_group <- case_when(
     var_type %in% c("Discrete", "Ordinal") ~ "Heatmap",
     TRUE ~ var_type
   )
-  
+
   switch(type_group,
     "Heatmap" = {
-      plot_data <- data %>% 
-        group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>% 
-        tally() %>% 
+      plot_data <- data %>%
+        group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>%
+        tally() %>%
         rename("Anxiety" = "Anxiety Level (1-10)", "Count" = "n") %>%
         mutate(Anxiety = as.factor(Anxiety), name = as.factor(!!sym(variable)))
-      
-      ggplot(plot_data, aes(x=Anxiety, y=!!sym(variable), fill = Count)) +
+
+      ggplot(plot_data, aes(x = Anxiety, y = !!sym(variable), fill = Count)) +
         geom_tile(color = "white") +
         scale_fill_gradient(low = "white", high = "steelblue") +
         scale_x_discrete(limits = as.character(1:10)) +
         labs(title = variable) +
         theme_minimal()
     },
-    
-    "Continuous" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`), 
-                                    y=!!sym(variable))) +
+    "Continuous" = ggplot(data, aes(
+      x = as.factor(`Anxiety Level (1-10)`),
+      y = !!sym(variable)
+    )) +
       geom_boxplot(color = 1, fill = "lightblue") +
       labs(x = "Anxiety Level (1-10)", title = variable) +
       theme_minimal(),
-    
-    "Categorical (Few)" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`),
-                                           fill=!!sym(variable))) +
+    "Categorical (Few)" = ggplot(data, aes(
+      x = as.factor(`Anxiety Level (1-10)`),
+      fill = !!sym(variable)
+    )) +
       geom_bar(stat = "count", position = "fill", color = 1) +
       scale_x_discrete(limits = as.character(1:10)) +
       labs(
-          x = "Anxiety Level (1-10)", 
-          y = paste("Proportion of", variable), 
-          title = variable
+        x = "Anxiety Level (1-10)",
+        y = paste("Proportion of", variable),
+        title = variable
       ) +
       theme_minimal(),
-    
-    "Categorical (Many)" = ggplot(data, aes(x = `Anxiety Level (1-10)`, 
-                                            color = !!sym(variable))) +
+    "Categorical (Many)" = ggplot(data, aes(
+      x = `Anxiety Level (1-10)`,
+      color = !!sym(variable)
+    )) +
       geom_density(linewidth = 0.75, adjust = 1.5) +
       scale_x_discrete(limits = as.character(1:10)) +
       scale_color_manual(values = color_scale_13) +
       labs(title = variable) +
       theme_minimal(),
-    
     stop(paste("Unrecognized variable type:", var_type))
   )
 }
@@ -180,15 +184,15 @@ This setup helped us model each group more effectively, without forcing a single
 ## Labeling High Anxiety (Levels 8–10)
 
 ```{r logistic_model}
-logistic_data <- data %>% 
-    mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)`<=7, "Low/Moderate Anxiety", "High Anxiety")) %>% 
-    select(-`Anxiety Level (1-10)`) %>%
-    mutate(across(where(is.character), as.factor)) %>% 
-    mutate(AnxietyBinary = factor(AnxietyBinary, levels=c("Low/Moderate Anxiety", "High Anxiety"))) 
+logistic_data <- data %>%
+  mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)` <= 7, "Low/Moderate Anxiety", "High Anxiety")) %>%
+  select(-`Anxiety Level (1-10)`) %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(AnxietyBinary = factor(AnxietyBinary, levels = c("Low/Moderate Anxiety", "High Anxiety")))
 
 names(logistic_data) <- make.names(names(logistic_data)) %>% sub("\\.\\..*$", "", .)
 
-logistic_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data=logistic_data)
+logistic_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data = logistic_data)
 ```
 
 
@@ -242,7 +246,7 @@ It’s not a perfect separation, but the results reflect a general alignment wit
 true_class <- logistic_data$AnxietyBinary
 pred_probs <- predict(logistic_model, type = "response")
 pred_class <- ifelse(pred_probs > 0.5, "High Anxiety", "Low/Moderate Anxiety") %>%
-                factor(levels = c("Low/Moderate Anxiety", "High Anxiety"))
+  factor(levels = c("Low/Moderate Anxiety", "High Anxiety"))
 
 cm <- confusionMatrix(pred_class, true_class)
 cm_counts <- as.data.frame(cm$table)
@@ -252,11 +256,11 @@ ggplot(cm_counts, aes(x = Reference, y = Prediction, fill = Freq)) +
   geom_tile(color = "white") +
   geom_text(aes(label = Freq), color = "black", size = 5) +
   scale_fill_gradient(low = "white", high = "steelblue") +
-  scale_x_discrete(labels=c("Moderate", "High")) +
-  scale_y_discrete(labels=c("Moderate", "High")) +
+  scale_x_discrete(labels = c("Moderate", "High")) +
+  scale_y_discrete(labels = c("Moderate", "High")) +
   labs(
     title = "Confusion Matrix",
-    subtitle =  "(Threshold = 0.5)",
+    subtitle = "(Threshold = 0.5)",
     x = "Actual Anxiety",
     y = "Predicted Anxiety",
     fill = "Count"
@@ -268,27 +272,27 @@ ggplot(cm_counts, aes(x = Reference, y = Prediction, fill = Freq)) +
 
 ### Contextual Effects in Anxiety Patterns
 ```{r interaction_data}
-logistic_intearction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality)^2 + Stress.Level + Caffeine.Intake , data = logistic_data, family = binomial)
+logistic_intearction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality)^2 + Stress.Level + Caffeine.Intake, data = logistic_data, family = binomial)
 
 # Augment dataset with binned versions
 augmented_data <- logistic_data %>%
   mutate(
-    Sleep.Bin = cut(Sleep.Hours, 
-                    breaks = quantile(Sleep.Hours, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE),
-                    labels = c("Low Sleep", "Mid Sleep", "High Sleep"),
-                    include.lowest = TRUE),
-    
+    Sleep.Bin = cut(Sleep.Hours,
+      breaks = quantile(Sleep.Hours, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE),
+      labels = c("Low Sleep", "Mid Sleep", "High Sleep"),
+      include.lowest = TRUE
+    ),
     Therapy.Bin = cut(Therapy.Sessions,
-                      breaks = quantile(Therapy.Sessions, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE),
-                      labels = c("Low Therapy", "Mid Therapy", "High Therapy"),
-                      include.lowest = TRUE),
-    
+      breaks = quantile(Therapy.Sessions, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE),
+      labels = c("Low Therapy", "Mid Therapy", "High Therapy"),
+      include.lowest = TRUE
+    ),
     Diet.Bin = cut(Diet.Quality,
-                   breaks = quantile(Diet.Quality, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE), 
-                   labels = c("Bad Diet", "Mid Diet", "Good Diet"),
-                   include.lowest = TRUE),
-    
-    log_odds = predict(logistic_intearction_model, type = "link")  
+      breaks = quantile(Diet.Quality, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE),
+      labels = c("Bad Diet", "Mid Diet", "Good Diet"),
+      include.lowest = TRUE
+    ),
+    log_odds = predict(logistic_intearction_model, type = "link")
   )
 ```
 
@@ -319,16 +323,16 @@ These effects weren’t included in the final model — keeping things simple an
 #| cache: true
 
 ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
-    geom_point(alpha = 0.15, size = 1) +
-    geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-    facet_wrap(~ Sleep.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-    labs(
-        title = "Therapy’s Influence on Predicted Anxiety",
-        subtitle = "Varies by Sleep and Diet",          
-        x = "Therapy Sessions",
-        y = "Model Prediction (Higher = More Likely High Anxiety)"
-    ) +
-    theme_minimal()
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Sleep.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Therapy’s Influence on Predicted Anxiety",
+    subtitle = "Varies by Sleep and Diet",
+    x = "Therapy Sessions",
+    y = "Model Prediction (Higher = More Likely High Anxiety)"
+  ) +
+  theme_minimal()
 ```
 
 #### Sleep
@@ -344,17 +348,16 @@ ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
 #| cache: true
 
 ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
-    geom_point(alpha = 0.15, size = 1) +
-    geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-    facet_wrap(~ Therapy.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-    labs(
-        title = "Sleep’s Influence on Predicted Anxiety",
-        subtitle = "Varies by Therapy and Diet",          
-        x = "Sleep Hours",
-        y = "Model Prediction (Higher = More Likely High Anxiety)"
-    ) +
-    theme_minimal()
-
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Therapy.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Sleep’s Influence on Predicted Anxiety",
+    subtitle = "Varies by Therapy and Diet",
+    x = "Sleep Hours",
+    y = "Model Prediction (Higher = More Likely High Anxiety)"
+  ) +
+  theme_minimal()
 ```
 
 #### Diet 
@@ -371,16 +374,16 @@ ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
 
 
 ggplot(augmented_data, aes(x = Diet.Quality, y = log_odds)) +
-    geom_point(alpha = 0.15, size = 1) +
-    geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-    facet_wrap(~ Therapy.Bin + Sleep.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-    labs(
-        title = "Diet’s Influence on Predicted Anxiety",
-        subtitle = "Varies by Therapy and Sleep",          
-        x = "Diet Quality",
-        y = "Model Prediction (Higher = More Likely High Anxiety)"
-    ) +
-    theme_minimal()
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Therapy.Bin + Sleep.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Diet’s Influence on Predicted Anxiety",
+    subtitle = "Varies by Therapy and Sleep",
+    x = "Diet Quality",
+    y = "Model Prediction (Higher = More Likely High Anxiety)"
+  ) +
+  theme_minimal()
 ```
 
 :::
@@ -425,13 +428,13 @@ As shown in the confusion matrix below, most predictions clustered near the corr
 On the other hand, the model struggled at the extremes, rarely predicting the lowest or highest scores.  Considering we already flagged high risk individuals, this limitation is acceptable. Still, it’s a helpful reminder that this model is better suited for exploring overall trends than for making precise individual predictions.
 
 ```{r linear_model}
-linear_data <- data %>% 
-    mutate(across(where(is.character), as.factor)) %>%
-    filter(`Anxiety Level (1-10)`<=7)
+linear_data <- data %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  filter(`Anxiety Level (1-10)` <= 7)
 
 names(linear_data) <- make.names(names(linear_data)) %>% sub("\\.\\..*$", "", .)
 
-linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=linear_data)
+linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data = linear_data)
 ```
 
 ```{r linear_model_cm}
@@ -440,25 +443,25 @@ linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake 
 
 true_anxiety <- as.factor(linear_data$Anxiety.Level)
 predicted_anxiety <- predict(linear_model) %>%
-                        (\(x) round(pmax(pmin(x, 7), 1), 0)) %>%
-                        as.factor()
+  (\(x) round(pmax(pmin(x, 7), 1), 0)) %>%
+  as.factor()
 
-cm <- confusionMatrix(predicted_anxiety, true_anxiety) 
+cm <- confusionMatrix(predicted_anxiety, true_anxiety)
 cm_counts <- as.data.frame(cm$table)
 
 ggplot(cm_counts, aes(x = Reference, y = Prediction, fill = Freq)) +
-    geom_tile(color = "white") +
-    geom_text(aes(label = Freq), color = "black", size = 4) +  
-    scale_fill_gradient(low = "white", high = "steelblue") +
-    scale_x_discrete(limits = as.character(1:7)) +
-    scale_y_discrete(limits = as.character(1:7)) +
-    labs(
-        x = "True Anxiety Level",
-        y = "Predicted Anxiety Level",
-        title = "Confusion Matrix of Anxiety",
-        color = "Count"
-    ) + 
-    theme_minimal()
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), color = "black", size = 4) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  scale_x_discrete(limits = as.character(1:7)) +
+  scale_y_discrete(limits = as.character(1:7)) +
+  labs(
+    x = "True Anxiety Level",
+    y = "Predicted Anxiety Level",
+    title = "Confusion Matrix of Anxiety",
+    color = "Count"
+  ) +
+  theme_minimal()
 ```
 
 

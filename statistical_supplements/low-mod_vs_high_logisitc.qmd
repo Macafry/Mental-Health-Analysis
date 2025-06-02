@@ -39,12 +39,12 @@ data <- read_csv("../data/enhanced_anxiety_dataset.csv")
 ```
 
 ```{r prepare_data}
-
-model_data <- data %>% 
-    mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)`<=7, "Low/Moderate Anxiety", "High Anxiety")) %>% 
-    select(-`Anxiety Level (1-10)`) %>%
-    mutate(across(where(is.character), as.factor)) %>% 
-    mutate(AnxietyBinary = factor(AnxietyBinary, levels=c("Low/Moderate Anxiety", "High Anxiety"))) 
+# Prepare data for logistic regression model
+model_data <- data %>%
+  mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)` <= 7, "Low/Moderate Anxiety", "High Anxiety")) %>% # binary anxiety
+  select(-`Anxiety Level (1-10)`) %>% # Remove detailed anxiety
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(AnxietyBinary = factor(AnxietyBinary, levels = c("Low/Moderate Anxiety", "High Anxiety"))) # ensure Low/Mod is baseline
 
 names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
 ```
@@ -82,21 +82,22 @@ We computed permutation-based feature importance using a random forest. A clear 
 #| dpi: 300
 #| cache: true
 
+# Fit Random Forest
 model <- ranger(
   formula = AnxietyBinary ~ .,
   data = model_data,
-  probability = FALSE,               
-  importance = "permutation",       
+  probability = FALSE,
+  importance = "permutation",
   num.trees = 500
 )
 
-# Get permutation importance
-
+# Get Permutation Importance
 imp <- data.frame(
   Feature = names(model$variable.importance),
   Importance = model$variable.importance
 )
 
+# Plot Permutation Importance
 ggplot(imp, aes(x = reorder(Feature, Importance), y = Importance)) +
   geom_col(fill = "steelblue") +
   coord_flip() +
@@ -110,8 +111,8 @@ While additional variables may be considered later, this starting point balances
 ```{r initial_model}
 #| warning: false
 
-
-initial_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data=model_data)
+# Fit an initial model based on PFI heuristics
+initial_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data = model_data)
 
 initial_model$formula
 ```
@@ -126,6 +127,8 @@ The results (shown below) indicate that removing any one of the five predictors 
 
 
 ```{r removing_variables}
+# Showing the comparison between the original model and
+# a model with a variable removed for each variable in the model
 
 cat("Therapy Sessions:\n")
 simplified_model <- update(initial_model, . ~ . - Therapy.Sessions)
@@ -200,17 +203,18 @@ step_importance_model$formula
 
 To compare our manual approach against a traditional model selection method, we ran a stepwise selection procedure using AIC. The process began with the initial five-variable model and evaluated additions and removals based on AIC improvements.
 
-```{r stepwise}
+```{r stepwise_selection}
 #| warning: false
 #| cache: true
 
-full_model <- glm(AnxietyBinary ~ ., family = binomial(), data=model_data)
-null_model <- glm(AnxietyBinary ~ 1, family = binomial(), data=model_data)
+full_model <- glm(AnxietyBinary ~ ., family = binomial(), data = model_data)
+null_model <- glm(AnxietyBinary ~ 1, family = binomial(), data = model_data)
 
 stepwise_model <- step(initial_model,
-                       scope = list(lower = null_model, upper = full_model),
-                       direction = "both",
-                       trace = FALSE)
+  scope = list(lower = null_model, upper = full_model),
+  direction = "both",
+  trace = FALSE
+)
 
 stepwise_model$formula
 ```
@@ -227,33 +231,33 @@ To compare candidate models, we evaluated their discriminative performance using
 This uniformly high performance presented a practical dilemma: **when every model performs exceptionally, how do we choose?**
 
 
-```{r selection}
+```{r auc_selection}
 #| message: false
+
+# Funtion that extracs AUC from a model
 get_auc <- function(model) {
-    y_true <- model$y
-    y_pred <- predict(model, type = "response")
-    round(auc(roc(y_true, y_pred))[1], 4)
-    
+  y_true <- model$y
+  y_pred <- predict(model, type = "response")
+  round(auc(roc(y_true, y_pred))[1], 4)
 }
 
-
 model_labels <- c(
-    "importance (5 variables)", 
-    "importance (5 variables) + Heart Rate", 
-    "Fully Fxtended Importance", 
-    "Step-wise Selection", 
-    "Full Model (All varibles)"
+  "importance (5 variables)",
+  "importance (5 variables) + Heart Rate",
+  "Fully Fxtended Importance",
+  "Step-wise Selection",
+  "Full Model (All varibles)"
 )
 
 model_aucs <- c(
-    get_auc(initial_model),
-    get_auc(update(initial_model, . ~ . + Heart.Rate)),
-    get_auc(step_importance_model),
-    get_auc(stepwise_model),
-    get_auc(full_model)
+  get_auc(initial_model),
+  get_auc(update(initial_model, . ~ . + Heart.Rate)),
+  get_auc(step_importance_model),
+  get_auc(stepwise_model),
+  get_auc(full_model)
 )
 
-
+# Zipping model labels and AUC into a dataframe for display
 datatable(data.frame(Model = model_labels, AUC = model_aucs))
 ```
 
@@ -301,20 +305,21 @@ The four plots include:
 
 
 ```{r outlier_data}
-
-outlier_data <- model_data %>% 
-    select(Therapy.Sessions, Stress.Level, Sleep.Hours, 
-    Caffeine.Intake, Diet.Quality, AnxietyBinary) %>%
-    mutate(
-        PredictedAnxiety = ifelse(predict(initial_model, ., type="response") >= 0.5, 
-                                  "High Anxiety", "Low/Moderate Anxiety"),
-        PredictedProb = predict(initial_model, ., type="response"),
-        Cook = cooks.distance(initial_model),
-        PearsonResiduals = residuals(initial_model, type = "pearson"),
-        Leverage = hatvalues(initial_model),
-        LinearPredictors = predict(initial_model, ., type="link"),
-        Row = row_number()
-    )
+# Preparing a new dataset with all the typical outlier metrics for each observation
+outlier_data <- model_data %>%
+  select(
+    Therapy.Sessions, Stress.Level, Sleep.Hours,
+    Caffeine.Intake, Diet.Quality, AnxietyBinary
+  ) %>%
+  mutate(
+    PredictedProb = predict(initial_model, ., type = "response"),
+    PredictedAnxiety = ifelse(PredictedProb >= 0.5, "High Anxiety", "Low/Moderate Anxiety"),
+    Cook = cooks.distance(initial_model),
+    PearsonResiduals = residuals(initial_model, type = "pearson"),
+    Leverage = hatvalues(initial_model),
+    LinearPredictors = predict(initial_model, ., type = "link"),
+    Row = row_number()
+  )
 ```
 
 ```{r outlier_plots}
@@ -326,55 +331,77 @@ outlier_data <- model_data %>%
 #| fig-align: center
 
 
+# Plot Leverage against Cooks Distance
+# with Residual Magnitudes as point sizes
 p1 <- ggplot(outlier_data, aes(x = Leverage, y = Cook)) +
   geom_point(aes(size = abs(PearsonResiduals)), alpha = 0.6) +
   scale_size_continuous(name = "|Pearson Residual|") +
   geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
   geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "blue") +
-    geom_text(data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Leverage vs Cook’s Distance",
-       x = "Leverage (Hat Values)",
-       y = "Cook's Distance") +
+  geom_text(
+    data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Leverage vs Cook’s Distance",
+    x = "Leverage (Hat Values)",
+    y = "Cook's Distance"
+  ) +
   theme_minimal()
 
 
+# Plot Linear Predictor (logit) against Pearson Residuals
 p2 <- ggplot(outlier_data, aes(x = LinearPredictors, y = PearsonResiduals)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "loess", se = FALSE, linewidth = 0.75, color = "steelblue") +
   geom_hline(yintercept = c(-5, 5), linetype = "dashed", color = "red") +
-  geom_text(data = filter(outlier_data, abs(PearsonResiduals) > 5),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Linear Predictor vs Pearson Residuals",
-       x = "Linear Predictor (logit scale)",
-       y = "Pearson Residuals") +
+  geom_text(
+    data = filter(outlier_data, abs(PearsonResiduals) > 5),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Linear Predictor vs Pearson Residuals",
+    x = "Linear Predictor (logit scale)",
+    y = "Pearson Residuals"
+  ) +
   theme_minimal()
 
 
+# Plot Leverage against Pearson Residuals
 p3 <- ggplot(outlier_data, aes(x = Leverage, y = PearsonResiduals)) +
   geom_point(alpha = 0.6) +
   geom_hline(yintercept = c(-2, 2), linetype = "dashed", color = "blue") +
   geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
-  geom_text(data = filter(outlier_data, abs(PearsonResiduals) > 10 | Leverage > 0.04),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Leverage vs Pearson Residuals",
-       x = "Leverage (Hat Values)",
-       y = "Pearson Residuals") +
+  geom_text(
+    data = filter(outlier_data, abs(PearsonResiduals) > 10 | Leverage > 0.04),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Leverage vs Pearson Residuals",
+    x = "Leverage (Hat Values)",
+    y = "Pearson Residuals"
+  ) +
   theme_minimal()
 
-
+# Plot Cook's Distance
 p4 <- ggplot(outlier_data, aes(x = Row, y = Cook)) +
   geom_segment(aes(x = Row, xend = Row, y = 0, yend = Cook),
-               color = "steelblue", linewidth = 0.4) +
+    color = "steelblue", linewidth = 0.4
+  ) +
   geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "red") +
-  geom_text(data = filter(outlier_data, Cook > 0.02),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Cook’s Distance",
-       x = "Observation Index",
-       y = "Cook's Distance") +
+  geom_text(
+    data = filter(outlier_data, Cook > 0.02),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Cook’s Distance",
+    x = "Observation Index",
+    y = "Cook's Distance"
+  ) +
   theme_minimal()
 
-
+# Combine plots into one panel
+# Quarto's side by side panels didn't give enough control
 combined_plot <- (p1 + p2) / (p3 + p4)
 
 combined_plot &
@@ -409,9 +436,10 @@ While manual inspection is helpful, it’s not feasible to review every flagged 
 
 
 ```{r outlier_table}
-top_outliers <- outlier_data %>% 
-    filter(abs(PearsonResiduals) > 2 | Cook > 4 / nrow(outlier_data)) %>% 
-  slice_max(Cook, n = 30)  
+# Systematically filter for "outliers" and display them
+top_outliers <- outlier_data %>%
+  filter(abs(PearsonResiduals) > 2 | Cook > 4 / nrow(outlier_data)) %>%
+  slice_max(Cook, n = 30)
 top_ids <- top_outliers$Row
 
 datatable(top_outliers)
@@ -435,21 +463,27 @@ To evaluate the impact of these outliers, we fit a trimmed model that excludes t
 #| warning: false
 #| message: false
 
-
+# Fit a new model without the top 30 most influential observations
 model_trimmed <- glm(
-  AnxietyBinary ~ Therapy.Sessions + Stress.Level + 
+  AnxietyBinary ~ Therapy.Sessions + Stress.Level +
     Sleep.Hours + Caffeine.Intake + Diet.Quality,
   data = model_data[-top_ids, ],
   family = binomial()
 )
 
+# Create a dataframe with predictors as rows and each model coefficients for columns
+# Also a ratio of coefficients for a more straightforward comparison
 coef_comparison <- data.frame(
   Term = names(coef(initial_model)),
   Full_Model = coef(initial_model),
-  Trimmed_Model = coef(model_trimmed)
-) %>% mutate(Ratio = Trimmed_Model/Full_Model)
+  Trimmed_Model = coef(model_trimmed),
+  Ratio = coef(model_trimmed) / coef(initial_model)
+)
+
 print(coef_comparison)
 
+# compute and compare the AUC of both models
+# also compute the AUC for the trimmed model on the full dataset for a realistic comparison
 auc_full <- auc(model_data$AnxietyBinary, predict(initial_model, type = "response"))
 auc_trimmed <- auc(model_data$AnxietyBinary[-top_ids], predict(model_trimmed, type = "response"))
 auc_trimmed_all <- auc(model_data$AnxietyBinary, predict(model_trimmed, newdata = model_data, type = "response"))
@@ -482,28 +516,34 @@ The linearity plots show slight “S-shaped” curves for `Diet Quality`, `Caffe
 #| fig-align: center
 
 check_logit_linearity <- function(model) {
-  data <- model$data    
-  data <- data %>% rename_with(make.names)
+  # Extract the models data and augment it with linear predicted values (logits)
+  data <- model$data %>% rename_with(make.names)
   data$log_odds <- predict(model, type = "link")
 
+  # Extract variables to iterate over
   predictors <- all.vars(formula(model)[[3]])
   numeric_vars <- predictors[sapply(data[predictors], is.numeric)]
 
   plot_list <- list()
 
   for (var in numeric_vars) {
+    # compute parameters of the linear relationship
     slope <- coef(model)[var]
     x_mean <- mean(data[[var]])
     y_mean <- mean(data$log_odds)
-    
-    var_text <- gsub("\\.", " ", var)
+    intercept <- y_mean - slope * x_mean
 
+    var_text <- gsub("\\.", " ", var) # Readable Variable Name
+
+    # Plot logits vs variable with loess line and regression line on top
     p <- ggplot(data, aes_string(x = var, y = "log_odds")) +
       geom_point(alpha = 0.2, size = 1) +
       geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
-      geom_abline(intercept = y_mean - slope * x_mean, slope = slope, 
-                  color = "red", linetype = "dashed", linewidth = 1) +
-      labs(title = var_text, x = var_text,y = "Log-Odds")  +
+      geom_abline(
+        intercept = intercept, slope = slope,
+        color = "red", linetype = "dashed", linewidth = 1
+      ) +
+      labs(title = var_text, x = var_text, y = "Log-Odds") +
       theme(
         plot.title = element_text(size = 32, face = "bold"),
         axis.title = element_text(size = 28),
@@ -511,7 +551,7 @@ check_logit_linearity <- function(model) {
       ) +
       theme_minimal()
 
-    plot_list[[var]] <- p
+    plot_list[[var]] <- p # add plot to list of plots
   }
 
   # Combine plots into a 2-column grid with global title and subtitle
@@ -523,7 +563,7 @@ check_logit_linearity <- function(model) {
         plot.title = element_text(size = 20, face = "bold"),
         plot.subtitle = element_text(size = 16)
       )
-    )  &
+    ) &
     theme(
       plot.title = element_text(size = 16, face = "bold"),
       axis.title = element_text(size = 14),
@@ -548,11 +588,14 @@ To test whether any interaction terms improve model fit, we use a likelihood rat
 The likelihood ratio test shows that at least one interaction significantly improves model fit (p < 0.001), suggesting a violation of the additivity assumption and supporting the presence of interaction effects.
 
 ```{r test_additivity}
-main_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
+# Restate initial model with a more descriptive name for the sake of testing
+additive_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake, data = model_data, family = binomial)
 
+# fit a model with all 2-way interactions
 interaction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake)^2, data = model_data, family = binomial)
 
-anova(main_model, interaction_model, test = "LRT")
+# Test if ANY interaction is significant
+anova(additive_model, interaction_model, test = "LRT")
 ```
 
 Now that we know interaction terms collectively improve model fit, we use information criteria (AIC, BIC, and Bayes Factors) to identify which specific 2-way interactions are most supported. This shifts our focus from formal testing to model selection, prioritizing parsimony and interpretability.
@@ -562,22 +605,21 @@ Now that we know interaction terms collectively improve model fit, we use inform
 #| message: false
 #| warning: false
 
-# Define main additive model
-main_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake,
-                  data = model_data, family = binomial)
-
-# Predictor set
+# Predictor Variables: 2-way interaction Set
 vars <- c("Sleep.Hours", "Therapy.Sessions", "Diet.Quality", "Stress.Level", "Caffeine.Intake")
 interaction_pairs <- combn(vars, 2, simplify = FALSE)
 
 # Loop through 2-way interaction pairs
 interaction_results <- lapply(interaction_pairs, function(pair) {
+  # fit a model with all the additive variables + this specific interaction term
   interaction_term <- paste(pair, collapse = ":")
   extended_formula <- as.formula(paste("AnxietyBinary ~", paste(vars, collapse = " + "), "+", interaction_term))
   interaction_model <- glm(extended_formula, data = model_data, family = binomial)
 
-  stats <- model.comparison(main_model, interaction_model)$statistics # take only interaction_model row
+  # extract statistics when compared against the aditive model
+  stats <- model.comparison(additive_model, interaction_model)$statistics
 
+  # Take only interaction_model stats
   data.frame(
     Interaction = interaction_term,
     AIC = stats[2, ]$aic,
@@ -597,15 +639,16 @@ interaction_results_df <- interaction_results_df[order(interaction_results_df$p_
 # Add main model at the end
 baseline_row <- data.frame(
   Interaction = "None (Additive Model)",
-  AIC = round(AIC(main_model), 3),
-  BIC = round(BIC(main_model), 3),
+  AIC = round(AIC(additive_model), 3),
+  BIC = round(BIC(additive_model), 3),
   BayesFactor = NA,
   p_value = NA
 )
 
 # Combine & Show
 datatable(rbind(baseline_row, interaction_results_df),
-          options = list(pageLength = 11))
+  options = list(pageLength = 11)
+)
 ```
 
 
@@ -622,11 +665,8 @@ The interaction model is statistically superior by several criteria. Compared to
 
 
 ```{r interaction_model}
-additive_model <- glm(AnxietyBinary ~ Sleep.Hours + Therapy.Sessions + Diet.Quality + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
-
-
-interaction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality)^2 + Stress.Level + Caffeine.Intake , data = model_data, family = binomial)
-
+# compare the chosen model with interaction terms against the additive model
+interaction_model <- glm(AnxietyBinary ~ (Sleep.Hours + Therapy.Sessions + Diet.Quality)^2 + Stress.Level + Caffeine.Intake, data = model_data, family = binomial)
 
 model.comparison(additive_model, interaction_model)$statistics
 ```
@@ -649,8 +689,11 @@ Despite these limitations, the additive model has advantages:
 #| warning: false
 #| message: false
 
+auc_additive <- auc(model_data$AnxietyBinary, predict(additive_model, type = "response"))
+auc_interaction <- auc(model_data$AnxietyBinary, predict(interaction_model, type = "response"))
+
 cat("Additive model AUC:    ", round(auc_full, 4), "\n")
-cat("Interaction model AUC: ", round(auc(model_data$AnxietyBinary, predict(interaction_model, type = "response")), 4), "\n")
+cat("Interaction model AUC: ", round(auc_interaction, 4), "\n")
 ```
 
 To address this tradeoff, we retain the additive model for our primary analysis, while:
@@ -681,47 +724,51 @@ augmented_data <- model_data %>%
     Sleep.Bin = make_labeled_bins(Sleep.Hours, "Sleep.Hours"),
     Therapy.Bin = make_labeled_bins(Therapy.Sessions, "Therapy.Sessions"),
     Diet.Bin = make_labeled_bins(Diet.Quality, "Diet.Quality"),
-    log_odds = predict(interaction_model, type = "link")  # add logit prediction from interaction model
+    log_odds = predict(interaction_model, type = "link") # add logit prediction from interaction model
   )
 ```
 
 ```{r additivity_slopes}
 #| eval: false
-augmented_data %>% 
-    group_by(Therapy.Bin, Diet.Bin) %>%
-    summarise(
-        corr = cor(Sleep.Hours, log_odds),
-        y_sd = sd(log_odds),
-        x_sd = sd(Sleep.Hours),
-        slope = corr *  y_sd /  x_sd
-    ) %>% 
-    select(slope, Therapy.Bin, Diet.Bin) %>%
-    pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
-    print()
 
-augmented_data %>% 
-    group_by(Sleep.Bin, Diet.Bin) %>%
-    summarise(
-        corr = cor(Therapy.Sessions, log_odds),
-        y_sd = sd(log_odds),
-        x_sd = sd(Therapy.Sessions),
-        slope = corr *  y_sd /  x_sd
-    ) %>% 
-    select(slope, Sleep.Bin, Diet.Bin) %>%
-    pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
-    print()
+# Create a matrix of Sleep slopes | Therapy and Diet
+augmented_data %>%
+  group_by(Therapy.Bin, Diet.Bin) %>%
+  summarise(
+    corr = cor(Sleep.Hours, log_odds),
+    y_sd = sd(log_odds),
+    x_sd = sd(Sleep.Hours),
+    slope = corr * y_sd / x_sd
+  ) %>%
+  select(slope, Therapy.Bin, Diet.Bin) %>%
+  pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
+  print()
 
-augmented_data %>% 
-    group_by(Sleep.Bin, Therapy.Bin) %>%
-    summarise(
-        corr = cor(Diet.Quality, log_odds),
-        y_sd = sd(log_odds),
-        x_sd = sd(Diet.Quality),
-        slope = corr *  y_sd /  x_sd
-    ) %>% 
-    select(slope, Sleep.Bin, Therapy.Bin) %>%
-    pivot_wider(names_from = Sleep.Bin, values_from = slope) %>%
-    print()
+# Create a matrix of Therapy slopes | Sleep and Diet
+augmented_data %>%
+  group_by(Sleep.Bin, Diet.Bin) %>%
+  summarise(
+    corr = cor(Therapy.Sessions, log_odds),
+    y_sd = sd(log_odds),
+    x_sd = sd(Therapy.Sessions),
+    slope = corr * y_sd / x_sd
+  ) %>%
+  select(slope, Sleep.Bin, Diet.Bin) %>%
+  pivot_wider(names_from = Diet.Bin, values_from = slope) %>%
+  print()
+
+# Create a matrix of Diet slopes | Therapy and Sleep
+augmented_data %>%
+  group_by(Sleep.Bin, Therapy.Bin) %>%
+  summarise(
+    corr = cor(Diet.Quality, log_odds),
+    y_sd = sd(log_odds),
+    x_sd = sd(Diet.Quality),
+    slope = corr * y_sd / x_sd
+  ) %>%
+  select(slope, Sleep.Bin, Therapy.Bin) %>%
+  pivot_wider(names_from = Sleep.Bin, values_from = slope) %>%
+  print()
 ```
 
 1. Sleep Hours consistently exhibits a negative association with log-odds of high anxiety. This negative slope becomes more pronounced when both Therapy Sessions and Diet Quality are low, suggesting that adequate sleep is especially protective in less supportive therapeutic and nutritional contexts.
@@ -738,16 +785,17 @@ augmented_data %>%
 
 
 ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
-      geom_point(alpha = 0.15, size = 1) +
-      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
-      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-      facet_wrap(~ Therapy.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-      labs(title = "Interaction: Sleep Hours",
-           subtitle = "LOESS (blue) vs. Linear (dashed red)",
-           x = "Sleep Hours",
-           y = "Predicted Log-Odds") +
-      theme_minimal()
-
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Therapy.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Interaction: Sleep Hours",
+    subtitle = "LOESS (blue) vs. Linear (dashed red)",
+    x = "Sleep Hours",
+    y = "Predicted Log-Odds"
+  ) +
+  theme_minimal()
 ```
 
 
@@ -765,15 +813,17 @@ ggplot(augmented_data, aes(x = Sleep.Hours, y = log_odds)) +
 #| cache: true
 
 ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
-      geom_point(alpha = 0.15, size = 1) +
-      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
-      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-      facet_wrap(~ Sleep.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-      labs(title = "Interaction: Therapy Sessions",
-           subtitle = "LOESS (blue) vs. Linear (dashed red)",
-           x = "Therapy Sessions",
-           y = "Predicted Log-Odds") +
-      theme_minimal()
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Sleep.Bin + Diet.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Interaction: Therapy Sessions",
+    subtitle = "LOESS (blue) vs. Linear (dashed red)",
+    x = "Therapy Sessions",
+    y = "Predicted Log-Odds"
+  ) +
+  theme_minimal()
 ```
 
 
@@ -790,15 +840,17 @@ ggplot(augmented_data, aes(x = Therapy.Sessions, y = log_odds)) +
 #| cache: true
 
 ggplot(augmented_data, aes(x = Diet.Quality, y = log_odds)) +
-      geom_point(alpha = 0.15, size = 1) +
-      geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
-      geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
-      facet_wrap(~ Therapy.Bin + Sleep.Bin, labeller = label_wrap_gen(multi_line=FALSE)) +
-      labs(title = "Interaction: Diet Quality",
-           subtitle = "LOESS (blue) vs. Linear (dashed red)",
-           x = "Diet Quality",
-           y = "Predicted Log-Odds") +
-      theme_minimal()
+  geom_point(alpha = 0.15, size = 1) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ Therapy.Bin + Sleep.Bin, labeller = label_wrap_gen(multi_line = FALSE)) +
+  labs(
+    title = "Interaction: Diet Quality",
+    subtitle = "LOESS (blue) vs. Linear (dashed red)",
+    x = "Diet Quality",
+    y = "Predicted Log-Odds"
+  ) +
+  theme_minimal()
 ```
 
 
@@ -837,6 +889,7 @@ The following two plots visualize this calibration in complementary ways:
 
 pred_prob <- predict(initial_model, type = "response")
 
+# prepare data for a calibration plot using 200 quantiles
 cal_data <- model_data %>%
   mutate(pred_prob = pred_prob, bin = ntile(pred_prob, 200)) %>%
   group_by(bin) %>%
@@ -847,7 +900,7 @@ cal_data <- model_data %>%
     se = sqrt(obs_rate * (1 - obs_rate) / n)
   )
 
-# Plot
+# Calibration plot using 200 quantiles
 p1 <- ggplot(cal_data, aes(x = mean_pred, y = obs_rate)) +
   geom_point(size = 2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40") +
@@ -859,9 +912,12 @@ p1 <- ggplot(cal_data, aes(x = mean_pred, y = obs_rate)) +
   coord_fixed() +
   theme_minimal()
 
+# prepare data for a calibration plot using 20 bins of width of 5%
 cal_data <- model_data %>%
-  mutate(pred_prob = pred_prob,
-         bin = cut(pred_prob, breaks = seq(0, 1, by = 0.05), include.lowest = TRUE)) %>%
+  mutate(
+    pred_prob = pred_prob,
+    bin = cut(pred_prob, breaks = seq(0, 1, by = 0.05), include.lowest = TRUE)
+  ) %>%
   group_by(bin) %>%
   summarise(
     mean_pred = mean(pred_prob),
@@ -869,8 +925,7 @@ cal_data <- model_data %>%
     n = n()
   )
 
-
-# Plot
+# Calibration plot using 20 bins of width of 5%
 p2 <- ggplot(cal_data, aes(x = mean_pred, y = obs_rate)) +
   geom_point(size = 2) +
   geom_text(aes(label = n), vjust = -0.8, size = 3) +
@@ -931,9 +986,11 @@ Let’s break down what each predictor means in terms of odds:
 
 ```{r exp_coefficients}
 #| eval: false
+
+# print expected change factors after a 1 unit increase
 print(exp(initial_model$coefficients))
 
-print(exp(100*initial_model$coefficients[5]))
+print(exp(100 * initial_model$coefficients[5]))
 ```
 
 

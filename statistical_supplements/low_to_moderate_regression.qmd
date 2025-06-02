@@ -37,6 +37,15 @@ library(patchwork)
 data <- read_csv("../data/enhanced_anxiety_dataset.csv")
 ```
 
+```{r prepare_data}
+# Prepare data for linear regression model
+model_data <- data %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  filter(`Anxiety Level (1-10)` <= 7) # Remove high Anxiety Levels
+
+names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
+```
+
 ## Overview
 
 Exploratory plots revealed a strong relationship between Anxiety Level and Stress Level, providing early confidence in predictive modeling. However, before proceeding, we must consider the nature of our outcome variable. Anxiety Level is numerical, but **ordinal**—it has a meaningful order, but not necessarily equal spacing between categories. This complicates model selection, as linear regression assumes a continuous and unbounded outcome, where equal differences between values carry consistent meaning.
@@ -60,24 +69,21 @@ That said, we evaluate both models empirically before committing to one. Our fir
 #| dpi: 300
 #| cache: true
 
-model_data <- data %>% 
-    mutate(across(where(is.character), as.factor)) %>%
-    filter(`Anxiety Level (1-10)`<=7)
-
-names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
-
+# Fit Random Forest
 model <- ranger(
   formula = Anxiety.Level ~ .,
   data = model_data,
-  importance = "permutation",       
+  importance = "permutation",
   num.trees = 500
 )
 
+# Get Permutation Importance
 imp <- data.frame(
   Feature = names(model$variable.importance),
   Importance = model$variable.importance
 )
 
+# Plot Permutation Importance
 ggplot(imp, aes(x = reorder(Feature, Importance), y = Importance)) +
   geom_col(fill = "steelblue") +
   coord_flip() +
@@ -91,9 +97,11 @@ First, we fit the ordinal logistic regression model. The results show a clear pa
 
 ```{r ordinal_model}
 # Fit ordinal logistic regression with same predictors
-ordinal_model <- polr(ordered(Anxiety.Level) ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
-                    Therapy.Sessions + Family.History.of.Anxiety, 
-                  data = model_data, Hess = TRUE)
+ordinal_model <- polr(
+  ordered(Anxiety.Level) ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
+    Therapy.Sessions + Family.History.of.Anxiety,
+  data = model_data, Hess = TRUE
+)
 
 summary(ordinal_model)
 ```
@@ -106,31 +114,61 @@ One notable limitation is the model’s complete **failure to predict Anxiety Le
 
 
 ```{r print_cm_function}
-print_cm <- function(cm) {
-    # Capture printed output as text
-    summary_text <- capture.output(print(cm))
-    
-    # Glue relevant output together
-    new_output <-paste(summary_text[1:22], collapse = "\n")
+# Custom function to print the important Confusion Matrix statistics
+# The amount of details by class + the number of classes don't format well on the output
+print_cm <- function(predicted_level, true_level) {
+  # ensure levels are treated as Factors
+  predicted_level <- as.factor(predicted_level)
+  true_level <- as.factor(true_level)
 
-    cat(new_output)
-    # kable(as.data.frame(cm$byClass), digits = 3)
+  # Compute confusion Matrix
+  cm <- confusionMatrix(predicted_level, true_level)
+
+  # Capture printed output as text
+  summary_text <- capture.output(print(cm))
+
+  # Glue relevant output together
+  new_output <- paste(summary_text[1:22], collapse = "\n")
+
+  cat(new_output)
+  # kable(as.data.frame(cm$byClass), digits = 3)
 }
 ```
 
+
+```{r within_one_accuracy_function}
+# Function that calculates the percentage of levels predicted within one of the true level
+# That is the percentage of (levels predicted - true level) that is {-1, 0, 1}
+within_one_accuracy <- function(predicted_level, true_level) {
+  # ensure levels are treated numerically
+  predicted_level <- as.numeric(predicted_level)
+  true_level <- as.numeric(true_level)
+
+  mean(abs(predicted_level - true_level) <= 1)
+}
+```
+
+```{r to_level_function}
+# This function takes in the predicted anxiety of a continuous model
+# It then transforms it into one of the seven classes
+to_level <- function(predicted_level_continuous) {
+  # Make it an integer
+  predicted_level <- round(predicted_level_continuous, 0)
+
+  # Ensure it falls between the proper bounds
+  pmax(pmin(predicted_level, 7), 1)
+}
+```
 
 ```{r ordinal_model_metrics}
 #| warning: false
 #| message: false
 
-confusionMatrix(predict(ordinal_model), as.factor(model_data$Anxiety.Level)) %>% print_cm()
+# Display Results
+print_cm(predict(ordinal_model), model_data$Anxiety.Level)
 
-observed_anxiety <- model_data$Anxiety.Level
-predicted_anxiety <- as.numeric(predict(ordinal_model))
-
-within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
-
-cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+w1_accuracy <- within_one_accuracy(predict(ordinal_model), model_data$Anxiety.Level)
+cat(paste0("\nCases predicted within one level of the true level: ", round(100 * w1_accuracy, 2), "%"))
 ```
 
 
@@ -149,21 +187,27 @@ brant(ordinal_model)
 
 
 ```{r parallel_slopes_plot_function}
+# This function takes in the result of pomcheck along with some variable indicators
+# It outputs a plot that helps assess the parallel slopes assumption on the logit scale
 plot_pom <- function(variable, variable_label, variable_index, pom_data) {
-    
+  # Reformat the data to be ggplot-friendly
+  # `pom_data[[variable_index]]` contains the slope data for that variable
   plot_data <- pom_data[[variable_index]] %>%
-    pivot_longer(cols = starts_with("Anxiety.Level_>="),
-                 names_to = "Threshold",
-                 values_to = "EmpiricalLogit"
+    pivot_longer( # ggplot works best with long format
+      cols = starts_with("Anxiety.Level_>="),
+      names_to = "Threshold",
+      values_to = "EmpiricalLogit"
     ) %>%
-    mutate(
+    mutate( # Relabel the axis variables
       Threshold = str_replace(Threshold, "Anxiety\\.Level_>=(\\d)", "Anxiety ≥ \\1"),
-      Group = as.numeric(!!sym(variable))        
+      Group = as.numeric(!!sym(variable))
     ) %>%
-    filter(Threshold != "Anxiety ≥ 1")
+    filter(Threshold != "Anxiety ≥ 1") # All observations are `Anxiety ≥ 1`, removing redundancy
 
+  # extract the proper labels for the x axis
   labels <- as.character(pom_data[[variable_index]][[variable]])
 
+  # Parallel slopes plot
   p <- ggplot(plot_data, aes(x = Group, y = EmpiricalLogit, color = Threshold, group = Threshold)) +
     geom_line(linewidth = 1.2) +
     geom_point() +
@@ -178,7 +222,6 @@ plot_pom <- function(variable, variable_label, variable_index, pom_data) {
 
   return(p)
 }
-
 ```
 
 
@@ -189,19 +232,22 @@ plot_pom <- function(variable, variable_label, variable_index, pom_data) {
 #| fig-height: 12
 #| fig-align: center
 
-pom_data <- pomcheck(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
-                     Therapy.Sessions + Family.History.of.Anxiety,
-                     data = mutate(model_data, Anxiety.Level = as.factor(Anxiety.Level)))
-
-pom_df <- data.frame(
-    names = c("Stress.Level", "Sleep.Hours", "Caffeine.Intake",
-                     "Therapy.Sessions"),
-    labels = c("Stress Level", "Sleep Hours", "Caffeine Intake",
-                     "Therapy Sessions"),
-    pom_index = 1:4
+# Extract the data to help asses the parallel slopes assumption
+pom_data <- pomcheck(
+  Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake +
+    Therapy.Sessions + Family.History.of.Anxiety,
+  data = mutate(model_data, Anxiety.Level = as.factor(Anxiety.Level))
 )
 
-plots <- pmap(pom_df, ~plot_pom(..1, ..2, ..3, pom_data))
+# Dataframe containing variable metadata to simplify the calling of the `plot_pom` function
+pom_df <- data.frame(
+  names = c("Stress.Level", "Sleep.Hours", "Caffeine.Intake", "Therapy.Sessions"),
+  labels = c("Stress Level", "Sleep Hours", "Caffeine Intake", "Therapy Sessions"),
+  pom_index = 1:4
+)
+
+# Generate plots
+plots <- pmap(pom_df, ~ plot_pom(..1, ..2, ..3, pom_data))
 
 # Combine into 2-column patchwork grid
 wrap_plots(plots, ncol = 2, guides = "collect") +
@@ -212,13 +258,12 @@ wrap_plots(plots, ncol = 2, guides = "collect") +
       plot.title = element_text(size = 20, face = "bold"),
       plot.subtitle = element_text(size = 16)
     )
-  ) &   
+  ) &
   theme(
     plot.title = element_text(size = 16, face = "bold"),
     axis.title = element_text(size = 14),
     axis.text = element_text(size = 12)
   )
-
 ```
 
 
@@ -227,7 +272,7 @@ wrap_plots(plots, ncol = 2, guides = "collect") +
 We next examine the linear regression model. Its results closely mirror those of the ordinal model: `Sleep Hours` shows a negative association with `Anxiety Level`, while `Stress Level`, `Caffeine Intake`, `Therapy Sessions`, and `Family History of Anxiety` all exhibit positive associations. The model’s $R^2$ of 0.519 suggests moderate predictive power—consistent with the classification accuracy observed earlier. This alignment indicates that, despite its misspecification, the linear regression model effectively captures the main structure of the data.
 
 ```{r linear_model}
-linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=model_data)
+linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data = model_data)
 
 summary(linear_model)
 ```
@@ -238,12 +283,14 @@ The confusion matrix below also tells a similar story. The linear regression mod
 #| warning: false
 #| message: false
 
-predicted_anxiety <- round(pmax(pmin(predict(linear_model), 7), 1), 0)
-confusionMatrix(as.factor(predicted_anxiety), as.factor(model_data$Anxiety.Level))  %>% print_cm()
+# Get the predicted classes
+predicted_anxiety <- predict(linear_model) %>% to_level()
 
-within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
+# Display Results
+print_cm(predicted_anxiety, model_data$Anxiety.Level)
 
-cat(paste0("\nCases predicted within one level of the true level: ", round(100*within_one_accuracy, 2), "%"))
+w1_accuracy <- within_one_accuracy(predicted_anxiety, model_data$Anxiety.Level)
+cat(paste0("\nCases predicted within one level of the true level: ", round(100 * w1_accuracy, 2), "%"))
 ```
 
 
@@ -284,6 +331,9 @@ The results below suggest that `Stress Level` is indispensable (as expected), wi
 
 
 ```{r removing_variables}
+# Showing the comparison between the original model and
+# a model with a variable removed for each variable in the model
+
 cat("Stress Level:\n")
 simplified_model <- update(linear_model, . ~ . - Stress.Level)
 print(model.comparison(simplified_model, linear_model)$statistics)
@@ -316,7 +366,7 @@ Given this result, we retain the original model as our final specification for t
 
 
 ```{r adding_variables}
-# Add Heart Rate
+# Add Occupation
 occupation_added <- update(linear_model, . ~ . + Occupation)
 print(model.comparison(linear_model, occupation_added)$statistics)
 ```
@@ -341,9 +391,8 @@ The Q-Q plot shows slight "S-bending" near the tails, indicating mild deviations
 #| fig-width: 14
 #| fig-height: 6
 
-# Extract residuals
-model_residuals <- resid(linear_model)
-resid_df <- data.frame(Residuals = model_residuals)
+# Extract residuals into dataframe
+resid_df <- data.frame(Residuals = resid(linear_model))
 
 # Q-Q plot
 p1 <- ggplot(resid_df, aes(sample = Residuals)) +
@@ -352,20 +401,20 @@ p1 <- ggplot(resid_df, aes(sample = Residuals)) +
   labs(title = "Q-Q Plot of Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles") +
   theme_minimal()
 
-# Histogram
+# Residual Histogram + KDE plot
 p2 <- ggplot(resid_df, aes(x = Residuals)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "steelblue", color = "white", alpha = 0.8) +
   geom_density(color = "red", linewidth = 1) +
   labs(title = "Histogram of Residuals", x = "Residuals", y = "Density") +
   theme_minimal()
 
+# Combine plots
 p1 + p2 &
   theme(
     plot.title = element_text(size = 16, face = "bold"),
     axis.title = element_text(size = 14),
     axis.text = element_text(size = 12)
   )
-
 ```
 ### Homoskedasticity of Errors
 
@@ -412,9 +461,12 @@ The four plots include:
 ```{r outlier_data}
 #| cache: true
 
-outlier_data <- model_data %>% 
-    dplyr::select(Stress.Level, Sleep.Hours, 
-    Caffeine.Intake, Therapy.Sessions, Family.History.of.Anxiety, Anxiety.Level) %>%
+# Preparing a new dataset with all the typical outlier metrics for each observation
+outlier_data <- model_data %>%
+  dplyr::select(
+    Stress.Level, Sleep.Hours,
+    Caffeine.Intake, Therapy.Sessions, Family.History.of.Anxiety, Anxiety.Level
+  ) %>%
   mutate(
     Row = row_number(),
     Leverage = hatvalues(linear_model),
@@ -434,54 +486,80 @@ outlier_data <- model_data %>%
 #| fig-align: center
 #| cache: true
 
+
+# Plot Leverage against Cooks Distance
+# with Residual Magnitudes as point sizes
 p1 <- ggplot(outlier_data, aes(x = Leverage, y = Cook)) +
   geom_point(aes(size = abs(StudentizedResiduals)), alpha = 0.6) +
   scale_size_continuous(name = "|Studentized Residual|") +
   geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
   geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "blue") +
-  geom_text(data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Leverage vs Cook’s Distance",
-       x = "Leverage (Hat Values)",
-       y = "Cook's Distance") +
+  geom_text(
+    data = filter(outlier_data, Leverage > 0.03 | Cook > 0.01),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Leverage vs Cook’s Distance",
+    x = "Leverage (Hat Values)",
+    y = "Cook's Distance"
+  ) +
   theme_minimal()
 
+
+# Plot Predicted Anxiety against Studentized Residuals
 p2 <- ggplot(outlier_data, aes(x = PredictedAnxiety, y = StudentizedResiduals)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "loess", se = FALSE, linewidth = 0.75, color = "steelblue") +
   geom_hline(yintercept = c(-3, 3), linetype = "dashed", color = "red") +
-  geom_text(data = filter(outlier_data, abs(StudentizedResiduals) > 3),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Predicted Anxiety vs Studentized Residuals",
-       x = "Predicted Anxiety Level",
-       y = "Studentized Residuals") +
+  geom_text(
+    data = filter(outlier_data, abs(StudentizedResiduals) > 3),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Predicted Anxiety vs Studentized Residuals",
+    x = "Predicted Anxiety Level",
+    y = "Studentized Residuals"
+  ) +
   theme_minimal()
 
 
+# Plot Leverage against Studentized Residuals
 p3 <- ggplot(outlier_data, aes(x = Leverage, y = StudentizedResiduals)) +
   geom_point(alpha = 0.6) +
   geom_hline(yintercept = c(-3, 3), linetype = "dashed", color = "blue") +
   geom_vline(xintercept = 2 * mean(outlier_data$Leverage), linetype = "dotted", color = "red") +
-  geom_text(data = filter(outlier_data, abs(StudentizedResiduals) > 3 | Leverage > 0.04),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Leverage vs Studentized Residuals",
-       x = "Leverage (Hat Values)",
-       y = "Studentized Residuals") +
+  geom_text(
+    data = filter(outlier_data, abs(StudentizedResiduals) > 3 | Leverage > 0.04),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Leverage vs Studentized Residuals",
+    x = "Leverage (Hat Values)",
+    y = "Studentized Residuals"
+  ) +
   theme_minimal()
 
+
+# Plot Cook's Distance
 p4 <- ggplot(outlier_data, aes(x = Row, y = Cook)) +
   geom_segment(aes(x = Row, xend = Row, y = 0, yend = Cook),
-               color = "steelblue", linewidth = 0.4) +
+    color = "steelblue", linewidth = 0.4
+  ) +
   geom_hline(yintercept = 4 / nrow(model_data), linetype = "dashed", color = "red") +
-  geom_text(data = filter(outlier_data, Cook > 0.02),
-            aes(label = Row), vjust = -0.5, size = 4.5, color = "black") +
-  labs(title = "Cook’s Distance by Observation",
-       x = "Observation Index",
-       y = "Cook's Distance") +
+  geom_text(
+    data = filter(outlier_data, Cook > 0.02),
+    aes(label = Row), vjust = -0.5, size = 4.5, color = "black"
+  ) +
+  labs(
+    title = "Cook’s Distance by Observation",
+    x = "Observation Index",
+    y = "Cook's Distance"
+  ) +
   coord_cartesian(ylim = c(0, max(outlier_data$Cook) * 1.1)) +
   theme_minimal()
 
-
+# Combine plots into one panel
+# Quarto's side by side panels didn't give enough control
 combined_plot <- (p1 + p2) / (p3 + p4)
 
 combined_plot &
@@ -512,35 +590,39 @@ Since linearity concerns only numerical predictors, there is no need to assess t
 
 
 check_linearity <- function(model) {
-  data <- model$model    
-  data <- data %>% rename_with(make.names)
-  
+  # Extract the models data and augment it with the predicted values
+  data <- model$model %>% rename_with(make.names)
   data$predicted_value <- predict(model)
-  
+
+  # Extract variables to iterate over
   predictors <- all.vars(formula(model)[[3]])
   numeric_vars <- predictors[sapply(data[predictors], is.numeric)]
-  
+
   plot_list <- list()
-  
+
   for (var in numeric_vars) {
+    # compute parameters of the linear relationship
     slope <- coef(model)[var]
     x_mean <- mean(data[[var]], na.rm = TRUE)
     y_mean <- mean(data$predicted_value, na.rm = TRUE)
-    
-    var_text <- gsub("\\.", " ", var)
+    intercept <- y_mean - slope * x_mean
 
-    # Plot
+    var_text <- gsub("\\.", " ", var) # Readable Variable Name
+
+    # Plot predicted values vs variable with loess line and regression line on top
     p <- ggplot(data, aes_string(x = var, y = "predicted_value")) +
       geom_point(alpha = 0.2, size = 1) +
       geom_smooth(method = "loess", se = FALSE, linewidth = 1.2, color = "steelblue") +
-      geom_abline(intercept = y_mean - slope * x_mean, slope = slope, 
-                  color = "red", linetype = "dashed", linewidth = 1) +
+      geom_abline(
+        intercept = y_mean - slope * x_mean, slope = slope,
+        color = "red", linetype = "dashed", linewidth = 1
+      ) +
       labs(title = var_text, x = var_text, y = "Predicted Anxiety") +
       theme_minimal()
-    
+
     plot_list[[var]] <- p
   }
-  
+
   # Combine plots into a 2-column grid with global title and subtitle
   wrap_plots(plot_list, ncol = 2) +
     plot_annotation(
@@ -550,7 +632,7 @@ check_linearity <- function(model) {
         plot.title = element_text(size = 20, face = "bold"),
         plot.subtitle = element_text(size = 16)
       )
-    )  &
+    ) &
     theme(
       plot.title = element_text(size = 16, face = "bold"),
       axis.title = element_text(size = 14),
@@ -566,11 +648,14 @@ check_linearity(linear_model)
 
 A likelihood ratio test showed no evidence that including interaction terms improves model fit (p = 0.84), suggesting that additivity is a reasonable working assumption for this analysis. While interactions could exist, their effects appear negligible in this context.
 ```{r additivity}
-main_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=model_data)
+# Restate initial model with a more descriptive name for the sake of testing
+additive_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data = model_data)
 
-inter_model <- lm(Anxiety.Level ~ (Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety)^2, data=model_data)
+# fit a model with all 2-way interactions
+interaction_model <- lm(Anxiety.Level ~ (Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety)^2, data = model_data)
 
-anova(main_model, inter_model, test = "LRT")
+# Test if ANY interaction is significant
+anova(additive_model, interaction_model, test = "LRT")
 ```
 
 ### No Multicollinearity
@@ -595,7 +680,7 @@ To assess calibration, we compared the model’s predictions to the actual mean 
 #| cache: true
 
 # Bin into quantile-based bins (e.g., 20 bins)
-cal_data <- model_data %>% 
+cal_data <- model_data %>%
   mutate(
     predicted_anxiety = predict(linear_model),
     actual_anxiety = Anxiety.Level
@@ -608,7 +693,7 @@ cal_data <- model_data %>%
     n = n()
   )
 
-# Plot
+# Calibration Plot
 ggplot(cal_data, aes(x = mean_pred, y = mean_actual)) +
   geom_point(size = 2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40") +
@@ -641,13 +726,14 @@ Although we previously reviewed classification performance in the overview secti
 ```{r model_metrics_reminder}
 #| warning: false
 
-y_true <- as.factor(model_data$Anxiety.Level)
-y_pred_numeric <- pmin(pmax(predict(linear_model), 1), 7) # clamps values into [1,7]
-y_pred_class <- as.factor(round(y_pred_numeric, 0))
+# Get the predicted classes
+predicted_anxiety <- predict(linear_model) %>% to_level()
 
-confusionMatrix(y_pred_class, y_true)  %>% print_cm()
+# Display Results
+print_cm(predicted_anxiety, model_data$Anxiety.Level)
 
-cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+w1_accuracy <- within_one_accuracy(predicted_anxiety, model_data$Anxiety.Level)
+cat(paste0("\nCases predicted within one level of the true level: ", round(100 * w1_accuracy, 2), "%"))
 ```
 
 Now that we've revisited the results, let’s take a closer look at the **within-one accuracy** metric. At first glance, this may seem like an overly generous statistic. However, it’s important to recognize that **humans tend to struggle to reliably distinguish between adjacent levels on fine-grained ordinal scales**—especially when the number of levels exceeds 7.
@@ -691,16 +777,22 @@ resids <- linear_model$residuals
 resid_mean <- mean(resids)
 resid_sd <- sd(resids)
 
+# Plot showcasing the standard normality of the residuals
 ggplot(data.frame(resid = resids), aes(x = resid)) +
   geom_histogram(bins = 50, fill = "steelblue", color = "white", alpha = 0.8) +
   geom_vline(xintercept = c(-0.5, 0.5), linetype = "dashed", color = "darkblue", size = 1.2) +
   geom_vline(xintercept = c(-1.5, 1.5), linetype = "dotted", color = "darkred", size = 1.2) +
-  annotate("text", x = 0.55, y = 600, label = "±0.5 (Correct Prediction)", vjust = 1.5, hjust = 0, color = "darkblue", linewidth = 3.8) +
-  annotate("text", x = 1.55, y = 550, label = "±1.5 (Within-One Prediction)", vjust = 1.5, hjust = 0, color = "darkred", linewidth = 3.8) +
+  annotate("text",
+    x = 0.55, y = 600, label = "±0.5 (Correct Prediction)",
+    vjust = 1.5, hjust = 0, color = "darkblue", linewidth = 3.8
+  ) +
+  annotate("text",
+    x = 1.55, y = 550, label = "±1.5 (Within-One Prediction)",
+    vjust = 1.5, hjust = 0, color = "darkred", linewidth = 3.8
+  ) +
   labs(
     title = "Distribution of Residuals",
-    subtitle = paste0("Mean = ", round(resid_mean, 4), 
-                      ", SD = ", round(resid_sd, 4)),
+    subtitle = paste0("Mean = ", round(resid_mean, 4), ", SD = ", round(resid_sd, 4)),
     x = "Residual",
     y = "Count"
   ) +
@@ -764,16 +856,18 @@ To assess the contribution of lower-impact variables, we fit a simplified linear
 #| warning: false
 #| message: false
 
-simple_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours, data=model_data)
-
+# Fit model on just stress level and sleep
+simple_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours, data = model_data)
 summary(simple_model)
 
-predicted_anxiety <- round(pmax(pmin(predict(simple_model), 7), 1), 0)
-confusionMatrix(as.factor(predicted_anxiety), as.factor(model_data$Anxiety.Level))  %>% print_cm()
+# Get predicted anxiety
+predicted_anxiety <- predict(simple_model) %>% to_level()
 
-within_one_accuracy <- mean(abs(predicted_anxiety - observed_anxiety) <= 1)
+# Display Results
+print_cm(predicted_anxiety, model_data$Anxiety.Level)
 
-cat(paste("\nProportion of cases predicted within one level of the true level", round(within_one_accuracy, 4)))
+w1_accuracy <- within_one_accuracy(predicted_anxiety, model_data$Anxiety.Level)
+cat(paste0("\nCases predicted within one level of the true level: ", round(100 * w1_accuracy, 2), "%"))
 ```
 
 

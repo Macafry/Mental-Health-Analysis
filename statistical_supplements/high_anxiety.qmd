@@ -24,8 +24,16 @@ library(caret)
 
 ```{r read_data}
 #| warning: false
-
 data <- read_csv("../data/enhanced_anxiety_dataset.csv")
+```
+
+```{r prepare_data}
+# Prepare data for high anxiety modelling
+model_data <- data %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  filter(`Anxiety Level (1-10)` >= 8) # Remove Low-Moderate Anxiety levels
+
+names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
 ```
 
 ## Mutual Information for Anxiety Level (8-10)
@@ -40,16 +48,13 @@ To evaluate this more formally, we computed the mutual information between Anxie
 #| dpi: 300
 #| cache: true
 
-model_data <- data %>% 
-    mutate(across(where(is.character), as.factor)) %>%
-    filter(`Anxiety Level (1-10)`>=8)
-
-names(model_data) <- make.names(names(model_data)) %>% sub("\\.\\..*$", "", .)
-
+# Discretize data as for this purpose Anxiety is best represented as a categorical variable
 disc_data <- select(model_data, -Anxiety.Level) %>% discretize(disc = "equalfreq", nbins = 10)
 
+# Compute mutual information between Anxiety level and all other variables
 mi_scores <- sapply(disc_data, function(x) mutinformation(x, model_data$Anxiety.Level))
 
+# Showcase the mutual information
 mi <- data.frame(
   Feature = names(mi_scores),
   MutualInformation = mi_scores
@@ -72,21 +77,27 @@ Permutation tests confirmed these results. Only one predictor—`Diet Quality`�
 #| cache: true
 
 n_perm <- 1000
+
+# permute Anxiety level and compute mutual information for each permutation
 perm_mi <- replicate(n_perm, {
   shuffled_target <- sample(model_data$Anxiety.Level)
   sapply(disc_data, function(x) mutinformation(x, shuffled_target))
 })
 
+# Compute pvals - proportion of permuted MI >= observed MI
 p_vals <- sapply(1:length(disc_data), function(i) {
-  mean(perm_mi[i, ] >= mi_scores[i])  # proportion of permuted MI ≥ observed MI
+  mean(perm_mi[i, ] >= mi_scores[i])
 })
 
+# Aggregate and Showcase results
 mi_significance <- data.frame(
-    Mutual_Information = round(mi_scores, 5),
-    P_value = p_vals
+  Mutual_Information = round(mi_scores, 5),
+  P_value = p_vals
 )
 
-mi_significance %>% arrange(-mi_scores) %>% datatable()
+mi_significance %>%
+  arrange(-mi_scores) %>%
+  datatable()
 ```
 
 
@@ -105,14 +116,16 @@ Even with relaxed constraints, the tree produced no splits—implying that no fe
 #| dpi: 300
 #| cache: true
 
-tree_ord <- ctree(
-    as.factor(Anxiety.Level) ~ ., 
-    data = model_data,
-    control = ctree_control(mincriterion = 0.5, minsplit = 5)
+# Fit Decision tree
+tree <- ctree(
+  as.factor(Anxiety.Level) ~ .,
+  data = model_data,
+  control = ctree_control(mincriterion = 0.5, minsplit = 5)
 )
 
-plot(tree_ord)
-confusionMatrix(predict(tree_ord, model_data), as.ordered(model_data$Anxiety.Level))
+# Show Results
+plot(tree)
+confusionMatrix(predict(tree, model_data), as.ordered(model_data$Anxiety.Level))
 ```
 
 ## Conclusion

@@ -28,7 +28,6 @@ library(htmltools)
 
 ```{r read_data}
 #| warning: false
-
 data <- read_csv("../data/enhanced_anxiety_dataset.csv")
 ```
 
@@ -52,8 +51,7 @@ Use the dropdown below to explore each variable’s distribution and summary sta
 #| results: asis
 #| echo: false
 
-columns <- names(data)
-
+# Build selector for which variable to plot
 tags$select(
   id = "singlePlotSelector",
   class = "form-control",
@@ -62,33 +60,35 @@ tags$select(
   lapply(names(data), function(name) {
     tags$option(value = paste0("single-", name), name)
   })
-) %>% print()
+)
 ```
 
 
 
 ```{r single_variable_statistics}
+# Function that computes relevant statistics for each variable depending on data type
 single_variable_statistics <- function(data, name, var_type) {
   column <- data[[name]]
-  
+
   # Normalize to internal groupings
   type_group <- case_when(
     var_type %in% c("Categorical (Few)", "Categorical (Many)", "Ordinal") ~ "Categorical",
     var_type %in% c("Continuous", "Discrete") ~ "Continuous",
     TRUE ~ "Unknown"
   )
-  
+
+  # Guard clause
   if (type_group == "Unknown") {
     stop(paste("Unrecognized variable type:", var_type))
   }
 
+  # Compute Corresponding statistics
   if (type_group == "Categorical") {
     freq <- as.data.frame(table(column))
-    
+
     cat("**Counts:**\n\n")
     cat(knitr::kable(t(table(column))), sep = "\n")
     cat("\n\n")
-    
   } else if (type_group == "Continuous") {
     summary_vec <- c(
       Mean     = round(mean(column), 3),
@@ -96,56 +96,45 @@ single_variable_statistics <- function(data, name, var_type) {
       SD       = round(sd(column), 3),
       Skewness = round(e1071::skewness(column), 3)
     )
-    
+
     cat("**Summary Statistics: **\n\n")
     cat(knitr::kable(t(summary_vec)), sep = "\n")
     cat("\n\n")
-    
-  } 
+  }
 }
 ```
 
 ```{r single_variable_plots}
+# Custom extension of the Set3 pallete to support a 13th color
 color_scale_13 <- c(brewer.pal(12, "Set3"), "#999999")
 
+
+# Function that plots the most appropiate plot for each variable type
 single_variable_plot <- function(data, name, var_type) {
-  column <- data[[name]]
-  
-  # Open div container
-  
-  
-  # Create appropriate plot for variable
   plot <- switch(var_type,
-    
-    "Discrete" = ggplot(data, aes(x = !!sym(name))) +
+    "Discrete" = ggplot(data, aes(x = as.factor(!!sym(name)))) +
       geom_bar(stat = "count", color = 1, fill = "lightblue") +
-      scale_x_discrete(limits = as.character(min(column):max(column))) +
-      labs(x=name, y="Frequency") +   
+      labs(x = name, y = "Frequency") +
       theme_minimal(),
-    
-    "Ordinal" = ggplot(data, aes(x = !!sym(name))) +
+    "Ordinal" = ggplot(data, aes(x = as.factor(!!sym(name)))) +
       geom_bar(stat = "count", color = 1, fill = "lightblue") +
-      labs(x=name, y="Frequency") +
+      labs(x = name, y = "Frequency") +
       theme_minimal(),
-    
     "Continuous" = ggplot(data, aes(x = !!sym(name))) +
       geom_histogram(aes(y = ..density..), color = 1, bins = 10, fill = "lightblue") +
       geom_density(adjust = 1.5) +
-      labs(x=name, y="Density") +
+      labs(x = name, y = "Density") +
       theme_minimal(),
-    
     "Categorical (Few)" = ggplot(data, aes(x = !!sym(name), fill = !!sym(name))) +
       geom_bar(stat = "count", color = 1) +
-      labs(x=name, y="Frequency") +
+      labs(x = name, y = "Frequency") +
       theme_minimal(),
-    
     "Categorical (Many)" = ggplot(data, aes(x = fct_infreq(!!sym(name)), fill = fct_infreq(!!sym(name)))) +
       geom_bar(stat = "count", color = 1) +
       scale_x_discrete(guide = guide_axis(angle = 90)) +
       scale_fill_manual(values = color_scale_13) +
-      labs(x=name, y="Frequency", fill=name) +
+      labs(x = name, y = "Frequency", fill = name) +
       theme_minimal(),
-    
     stop(paste("Unrecognized variable type:", var_type))
   )
 
@@ -154,19 +143,28 @@ single_variable_plot <- function(data, name, var_type) {
 ```
 
 ```{r variable_tmeta_data}
+# Segregating the data by type of variable
 variable_types <- list(
-  "Categorical (Few)" = c("Gender", "Smoking", "Family History of Anxiety",
-                          "Dizziness", "Medication", "Recent Major Life Event"),
+  "Categorical (Few)" = c(
+    "Gender", "Smoking", "Family History of Anxiety",
+    "Dizziness", "Medication", "Recent Major Life Event"
+  ),
   "Categorical (Many)" = c("Occupation"),
-  "Ordinal" = c("Stress Level (1-10)", "Sweating Level (1-5)", 
-                "Diet Quality (1-10)", "Anxiety Level (1-10)"),
-  "Discrete" = c("Alcohol Consumption (drinks/week)", 
-                 "Therapy Sessions (per month)", "Breathing Rate (breaths/min)"),
-  "Continuous" = c("Age", "Sleep Hours", "Physical Activity (hrs/week)", 
-                   "Caffeine Intake (mg/day)", "Heart Rate (bpm)")
+  "Ordinal" = c(
+    "Stress Level (1-10)", "Sweating Level (1-5)",
+    "Diet Quality (1-10)", "Anxiety Level (1-10)"
+  ),
+  "Discrete" = c(
+    "Alcohol Consumption (drinks/week)",
+    "Therapy Sessions (per month)", "Breathing Rate (breaths/min)"
+  ),
+  "Continuous" = c(
+    "Age", "Sleep Hours", "Physical Activity (hrs/week)",
+    "Caffeine Intake (mg/day)", "Heart Rate (bpm)"
+  )
 )
 
-# Build metadata frame
+# Build variable type metadata frame
 meta_data <- imap_dfr(variable_types, ~ data.frame(
   variable = .x,
   type = .y,
@@ -181,25 +179,28 @@ meta_data <- imap_dfr(variable_types, ~ data.frame(
 #| dpi: 300
 #| cache: true
 
+# Render all single variable plots along with their statistics
+# Unfortunately HTML tools wasnt flexible enough for my plotting needs
+# So I'm printing several raw html components inside the plot
 pwalk(meta_data, function(variable, type) {
   # Open outer container
   cat('<div id="single-', variable, '" class="single-plot-div" style="display:none;">\n', sep = "")
-  
+
   # Title
   cat("####", variable, "\n\n")
 
   # Open centered inner container
   cat('<div style="width: 100%; padding: 0 15%; text-align: center;">\n')
-  
+
   # Print plot (separate from cat!)
   single_variable_plot(data, variable, type)
-  
+
   # Close centered inner container
-  cat('</div>\n')
+  cat("</div>\n")
 
   # Print statistics
   single_variable_statistics(data, variable, type)
-  
+
   # Close outer container
   cat("</div>\n\n")
 })
@@ -218,7 +219,10 @@ Use the dropdown below to explore each variable’s distribution and summary sta
 #| warning: false
 #| results: asis
 
-valid_columns <- setdiff(columns, "Anxiety Level (1-10)")
+# Build selector for which variable to plot against anxiety
+# Naturally, it doesn't make sense to plot Anxiety vs Anxiety
+
+valid_columns <- setdiff(names(data), "Anxiety Level (1-10)")
 
 tags$select(
   id = "doublePlotSelector",
@@ -228,54 +232,61 @@ tags$select(
   lapply(valid_columns, function(name) {
     tags$option(value = paste0("double-", name), name)
   })
-) %>% print()
+)
 ```
 
 
 ```{r double_variable_plot}
+# Function that plots the most appropriate plot for each variable type against anxiety
 double_variable_plot <- function(data, variable, var_type) {
-  if (variable == "Anxiety Level (1-10)") return(NULL)  # Skip self-comparison
-    
+  # Guard clause - Skip self-comparison
+  if (variable == "Anxiety Level (1-10)") {
+    return(NULL)
+  }
+
+  # Normalize to internal groupings
   type_group <- case_when(
     var_type %in% c("Discrete", "Ordinal") ~ "Heatmap",
     TRUE ~ var_type
-  )    
-  
+  )
+
   switch(type_group,
     "Heatmap" = {
-      plot_data <- data %>% 
-        group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>% 
-        tally() %>% 
+      plot_data <- data %>%
+        group_by(`Anxiety Level (1-10)`, !!sym(variable)) %>%
+        tally() %>%
         rename("Anxiety" = "Anxiety Level (1-10)", "Count" = "n") %>%
         mutate(Anxiety = as.factor(Anxiety), name = as.factor(!!sym(variable)))
-      
-      ggplot(plot_data, aes(x=Anxiety, y=!!sym(variable), fill = Count)) +
+
+      ggplot(plot_data, aes(x = Anxiety, y = !!sym(variable), fill = Count)) +
         geom_tile(color = "white") +
         scale_fill_gradient(low = "white", high = "steelblue") +
         scale_x_discrete(limits = as.character(1:10)) +
         theme_minimal()
     },
-    
-    "Continuous" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`), 
-                                    y=!!sym(variable))) +
+    "Continuous" = ggplot(data, aes(
+      x = as.factor(`Anxiety Level (1-10)`),
+      y = !!sym(variable)
+    )) +
       geom_boxplot(color = 1, fill = "lightblue") +
       labs(x = "Anxiety Level (1-10)") +
       theme_minimal(),
-    
-    "Categorical (Few)" = ggplot(data, aes(x=as.factor(`Anxiety Level (1-10)`),
-                                           fill=!!sym(variable))) +
+    "Categorical (Few)" = ggplot(data, aes(
+      x = as.factor(`Anxiety Level (1-10)`),
+      fill = !!sym(variable)
+    )) +
       geom_bar(stat = "count", position = "fill", color = 1) +
       scale_x_discrete(limits = as.character(1:10)) +
       labs(x = "Anxiety Level (1-10)", y = "Proportion") +
       theme_minimal(),
-    
-    "Categorical (Many)" = ggplot(data, aes(x = `Anxiety Level (1-10)`, 
-                                            color = !!sym(variable))) +
+    "Categorical (Many)" = ggplot(data, aes(
+      x = `Anxiety Level (1-10)`,
+      color = !!sym(variable)
+    )) +
       geom_density(linewidth = 0.75, adjust = 1.5) +
       scale_x_discrete(limits = as.character(1:10)) +
       scale_color_manual(values = color_scale_13) +
       theme_minimal(),
-    
     stop(paste("Unrecognized variable type:", var_type))
   )
 }
@@ -290,23 +301,28 @@ double_variable_plot <- function(data, variable, var_type) {
 #| dpi: 300
 #| cache: true
 
+# Render all variable vs Anxiety plots
+# Unfortunately HTML tools wasn't flexible enough for my plotting needs
+# So I'm printing several raw html components inside the plot
 pwalk(meta_data, function(variable, type) {
-  if (variable == "Anxiety Level (1-10)") return(NULL)
-  
+  if (variable == "Anxiety Level (1-10)") {
+    return(NULL)
+  }
+
   # Open outer container
   cat(paste0('<div id="double-', variable, '" class="double-plot-div" style="display:none;">\n'))
-  
+
   # Title
   cat(paste("#### Anxiety Level (1-10) vs", variable, "\n\n"))
-  
+
   # Open centered inner container
   cat('<div style="width: 100%; padding: 0 15%; text-align: center;">\n')
-  
+
   # Plot
   print(double_variable_plot(data, variable, type))
-  
+
   # Close centered inner container
-  cat('</div>\n')
+  cat("</div>\n")
 
   # Close outer container
   cat("</div>\n")
@@ -351,20 +367,22 @@ To address this, we adopt a stacked modeling strategy:
 
 This setup allows each model to focus on patterns that are internally consistent within its group, rather than forcing a single model to bridge competing dynamics. While this approach introduces additional complexity, it offers gains in both interpretability and performance. The specific challenges and decisions for each stage will be addressed in the modeling sections that follow.
 
-<!-- Render a default plots, let it be age for both selects -->
+<!-- Necessary HTML for the selectors to work properly -->
 ```{=html}
 <script>
-
-function showDoublePlot(id) {
-  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
-  document.getElementById(id).style.display = 'block';
-}
-
+// Single variable selector function
 function showSinglePlot(id) {
   document.querySelectorAll('.single-plot-div').forEach(div => div.style.display = 'none');
   document.getElementById(id).style.display = 'block';
 }
 
+// Double variable selector function
+function showDoublePlot(id) {
+  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+//Render default plots - let it be age for both selects
 document.addEventListener('DOMContentLoaded', function() {
     showSinglePlot('single-Age');
     showDoublePlot('double-Age');

@@ -166,7 +166,27 @@ ul.task-list li input[type="checkbox"] {
 <p>To guide univariate visualizations, predictors were grouped into five structural types: Categorical (Few), Categorical (Many), Ordinal, Discrete, and Continuous. Visualizations were matched accordingly—e.g., bar plots for discrete or ordinal variables, and histograms with overlaid density curves for continuous ones (10 bins, adjust = 1.5) to smooth sampling artifacts without distorting shape. This approach balances visual clarity with representational accuracy.</p>
 <p>Most variables are roughly uniform or flat. Notable exceptions include Sleep Hours (approximately normal), Caffeine Intake (slightly left-skewed), and Physical Activity and Therapy Sessions (strongly right-skewed, which may hint towards log transformation when modeling). Anxiety Level, while also right-skewed, is treated as an ordinal response and shouldn’t be transformed.</p>
 <p>Use the dropdown below to explore each variable’s distribution and summary statistics interactively.</p>
-<p><select id="singlePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showSinglePlot(this.value)"> <option value="single-Age">Age</option> <option value="single-Gender">Gender</option> <option value="single-Occupation">Occupation</option> <option value="single-Sleep Hours">Sleep Hours</option> <option value="single-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option> <option value="single-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option> <option value="single-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option> <option value="single-Smoking">Smoking</option> <option value="single-Family History of Anxiety">Family History of Anxiety</option> <option value="single-Stress Level (1-10)">Stress Level (1-10)</option> <option value="single-Heart Rate (bpm)">Heart Rate (bpm)</option> <option value="single-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option> <option value="single-Sweating Level (1-5)">Sweating Level (1-5)</option> <option value="single-Dizziness">Dizziness</option> <option value="single-Medication">Medication</option> <option value="single-Therapy Sessions (per month)">Therapy Sessions (per month)</option> <option value="single-Recent Major Life Event">Recent Major Life Event</option> <option value="single-Diet Quality (1-10)">Diet Quality (1-10)</option> <option value="single-Anxiety Level (1-10)">Anxiety Level (1-10)</option> </select></p>
+<select id="singlePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showSinglePlot(this.value)">
+<option value="single-Age">Age</option>
+<option value="single-Gender">Gender</option>
+<option value="single-Occupation">Occupation</option>
+<option value="single-Sleep Hours">Sleep Hours</option>
+<option value="single-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option>
+<option value="single-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option>
+<option value="single-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option>
+<option value="single-Smoking">Smoking</option>
+<option value="single-Family History of Anxiety">Family History of Anxiety</option>
+<option value="single-Stress Level (1-10)">Stress Level (1-10)</option>
+<option value="single-Heart Rate (bpm)">Heart Rate (bpm)</option>
+<option value="single-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option>
+<option value="single-Sweating Level (1-5)">Sweating Level (1-5)</option>
+<option value="single-Dizziness">Dizziness</option>
+<option value="single-Medication">Medication</option>
+<option value="single-Therapy Sessions (per month)">Therapy Sessions (per month)</option>
+<option value="single-Recent Major Life Event">Recent Major Life Event</option>
+<option value="single-Diet Quality (1-10)">Diet Quality (1-10)</option>
+<option value="single-Anxiety Level (1-10)">Anxiety Level (1-10)</option>
+</select>
 <div id="single-Gender" class="single-plot-div" style="display:none;">
 <section id="gender" class="level4">
 <h4 class="anchored" data-anchor-id="gender">Gender</h4>
@@ -734,7 +754,26 @@ ul.task-list li input[type="checkbox"] {
 <h3 class="anchored" data-anchor-id="anxiety-level-vs-other-variable-plots">Anxiety Level vs Other Variable Plots</h3>
 <p>To explore how each variable relates to the response variable Anxiety Level (1–10), we selected visualization strategies matched to variable type. While ordinal, Anxiety Level can flexibly be treated as categorical or numeric depending on context. For example, heatmaps were used for ordinal/discrete pairs, while continuous predictors were paired with boxplots, and categorical variables with bar or density plots. These choices maximize interpretability, particularly given the discrete nature of anxiety ratings.</p>
 <p>Use the dropdown below to explore each variable’s distribution and summary statistics interactively.</p>
-<p><select id="doublePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showDoublePlot(this.value)"> <option value="double-Age">Age</option> <option value="double-Gender">Gender</option> <option value="double-Occupation">Occupation</option> <option value="double-Sleep Hours">Sleep Hours</option> <option value="double-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option> <option value="double-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option> <option value="double-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option> <option value="double-Smoking">Smoking</option> <option value="double-Family History of Anxiety">Family History of Anxiety</option> <option value="double-Stress Level (1-10)">Stress Level (1-10)</option> <option value="double-Heart Rate (bpm)">Heart Rate (bpm)</option> <option value="double-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option> <option value="double-Sweating Level (1-5)">Sweating Level (1-5)</option> <option value="double-Dizziness">Dizziness</option> <option value="double-Medication">Medication</option> <option value="double-Therapy Sessions (per month)">Therapy Sessions (per month)</option> <option value="double-Recent Major Life Event">Recent Major Life Event</option> <option value="double-Diet Quality (1-10)">Diet Quality (1-10)</option> </select></p>
+<select id="doublePlotSelector" class="form-control" style="width: 300px; padding: 6px; font-size: 1em;" onchange="showDoublePlot(this.value)">
+<option value="double-Age">Age</option>
+<option value="double-Gender">Gender</option>
+<option value="double-Occupation">Occupation</option>
+<option value="double-Sleep Hours">Sleep Hours</option>
+<option value="double-Physical Activity (hrs/week)">Physical Activity (hrs/week)</option>
+<option value="double-Caffeine Intake (mg/day)">Caffeine Intake (mg/day)</option>
+<option value="double-Alcohol Consumption (drinks/week)">Alcohol Consumption (drinks/week)</option>
+<option value="double-Smoking">Smoking</option>
+<option value="double-Family History of Anxiety">Family History of Anxiety</option>
+<option value="double-Stress Level (1-10)">Stress Level (1-10)</option>
+<option value="double-Heart Rate (bpm)">Heart Rate (bpm)</option>
+<option value="double-Breathing Rate (breaths/min)">Breathing Rate (breaths/min)</option>
+<option value="double-Sweating Level (1-5)">Sweating Level (1-5)</option>
+<option value="double-Dizziness">Dizziness</option>
+<option value="double-Medication">Medication</option>
+<option value="double-Therapy Sessions (per month)">Therapy Sessions (per month)</option>
+<option value="double-Recent Major Life Event">Recent Major Life Event</option>
+<option value="double-Diet Quality (1-10)">Diet Quality (1-10)</option>
+</select>
 <!-- Generate plots inside div containers -->
 <div id="double-Gender" class="double-plot-div" style="display:none;">
 <section id="anxiety-level-1-10-vs-gender" class="level4">
@@ -913,19 +952,21 @@ ul.task-list li input[type="checkbox"] {
 </ul></li>
 </ul>
 <p>This setup allows each model to focus on patterns that are internally consistent within its group, rather than forcing a single model to bridge competing dynamics. While this approach introduces additional complexity, it offers gains in both interpretability and performance. The specific challenges and decisions for each stage will be addressed in the modeling sections that follow.</p>
-<!-- Render a default plots, let it be age for both selects -->
+<!-- Necessary HTML for the selectors to work properly -->
 <script>
-
-function showDoublePlot(id) {
-  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
-  document.getElementById(id).style.display = 'block';
-}
-
+// Single variable selector function
 function showSinglePlot(id) {
   document.querySelectorAll('.single-plot-div').forEach(div => div.style.display = 'none');
   document.getElementById(id).style.display = 'block';
 }
 
+// Double variable selector function
+function showDoublePlot(id) {
+  document.querySelectorAll('.double-plot-div').forEach(div => div.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+
+//Render default plots - let it be age for both selects
 document.addEventListener('DOMContentLoaded', function() {
     showSinglePlot('single-Age');
     showDoublePlot('double-Age');
