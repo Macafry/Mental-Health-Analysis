@@ -3,3 +3,5 @@
 /*_files/*
 /statistical_supplements/*_files/*
 .Rhistory
+renv/library/
+renv/staging/
