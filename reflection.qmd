@@ -1,0 +1,59 @@
+---
+title: "Reflection"
+author: "Ian McFarlane"
+format: 
+  html:
+    page-layout: article  
+    toc: true
+    toc-location: left
+    toc-title: "Contents"
+    toc-depth: 3
+    toc-float: true
+    toc-expand: true
+echo: false
+---
+
+## Motivation
+
+I took on this project because mental health is something I care deeply about — and I wanted to challenge myself by diving into a real analysis without hand-holding. This was my first independent project outside of a school setting. I had high expectations for myself and held the work to a high standard. More than anything, I wanted a project I could add to my portfolio to *demonstrate that I understand statistics* — not just use them.
+
+Because I believe learning is a continuous process, I’m also sharing my self-criticisms from this project below. If you have feedback or suggestions, feel free to connect with me on [LinkedIn](https://www.linkedin.com/in/ian-mc-farlane/) and send me a message — I’d love to hear your thoughts!
+
+## Improvements
+
+- **Train/test split:**  
+  I’ll be honest — I was so eager to jump into modeling that I forgot about this step until I was already deep into the analysis. At that point, adding it retroactively felt dishonest. That said, my sample size was large enough that I *should* have done a proper train/validation/test split. A validation set would have been especially useful for model selection.
+
+- **Use statistics more consistently:**  
+  I was inconsistent in how I applied statistical tools. Sometimes I minimized statistical tests in favor of "interpretability", and other times I leaned on them heavily (like the linear model’s additivity test). In future projects, I want to be more principled and consistent in how I use statistical reasoning.
+
+- **Don't force symmetry between models:**  
+  I spent too much time trying to keep the logistic and linear analyses aligned. But these are fundamentally different models with different strengths, assumptions, and workflows. Next time, I’ll let each model do what it does best — rather than trying to make them mirror each other.
+
+- **Avoid tool-driven decisions:**  
+  I sometimes made modeling choices based on what tools I wanted to showcase rather than what the problem required. That’s like trying to fix a faucet with your entire toolbox — some tools are helpful, others just get in the way. Going forward, I’ll be more mindful of what I *need* to do, instead of just what I *can* do.
+
+## Lessons Learned
+
+- **It’s hard to balance rigor and accessibility.**  
+  I often sacrificed statistical rigor in the name of communication — then justified those choices under the banner of “interpretability.” Ironically, I ended up explaining interactions anyway, so there wasn’t a compelling reason to stick with the simpler additive model. Looking back, those trade-offs deserved more honest and deliberate framing.
+
+  I also struggled with tone while writing for a general audience — frequently brushing up against condescension, oversimplification, or sounding overly didactic. It’s surprisingly difficult to explain advanced statistical ideas clearly without either talking down or overwhelming the reader. I made the mistake of starting from the model and then trying to adapt the explanation to fit the audience. In hindsight, I should have started with the audience in mind, and then chosen the modeling approach that best communicated the patterns *for them*.
+
+- **Working alone is both rewarding and limiting.**  
+  I spent a lot of time second-guessing myself, digging through websites, forums, and videos to understand the norms and edge cases for different approaches. Having someone to talk to — even just to bounce ideas off — would have saved time and built confidence. Still, doing the project solo was a valuable growth experience.
+
+## Other Questions
+
+- **Why not use decision trees?**  
+  Trees are another interpretable model, but they focus on capturing *local* patterns. In contrast, regression models tend to summarize *global* trends. My exploratory analysis suggested this was a globally structured problem. While I did test both a regression tree and a classification tree, they required tens of splits to approximate the patterns — making them harder to interpret. In the end, trees were a valid alternative, but didn’t serve my goals as well.
+
+- **Why use permutation importance?**  
+  I had just learned about it and wanted to try it out. I was drawn to it because earlier model selection methods I’d used (like stepwise selection) often felt too prone to overfitting by adding too many variables. Permutation importance gave me simpler models that conveyed nearly the same insights. However, I now realize I introduced data leakage by calculating it using the full model. I also should’ve paired it with diagnostic plots to better communicate what was happening.
+
+## Conclusion
+
+Given the circumstances and goals, I’d give myself a **B+**. I accomplished what I set out to do — but also made some major oversights along the way. That said, this project challenged me, taught me a great deal, and gave me a chance to reflect critically on my own process. I consider that a success, and a meaningful step forward in my growth as a data scientist. And honestly — I had fun tackling the challenges, puzzling through the trade-offs, and seeing the analysis come together.
+
+
+

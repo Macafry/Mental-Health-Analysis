@@ -1,0 +1,24 @@
+project:
+  type: website
+
+website:
+  title: "Anxiety in Context"
+  search: false
+  navbar:
+    background: "#000000"  
+    foreground: "#ffffff"
+    left:
+      - file: index.qmd
+        text: "Overview"
+      - text: "Statistical Supplements"
+        menu:
+          - text: "Exploratory Data Analysis"
+            file: statistical_supplements/exploratory_data_analysis.qmd
+          - text: "Low vs. High Anxiety (Logistic)"
+            file: statistical_supplements/low-mod_vs_high_logisitc.qmd
+          - text: "Low–Moderate Anxiety (Linear)"
+            file: statistical_supplements/low_to_moderate_regression.qmd
+          - text: "High Anxiety Model"
+            file: statistical_supplements/high_anxiety.qmd
+      - file: reflection.qmd
+        text: "Reflection"

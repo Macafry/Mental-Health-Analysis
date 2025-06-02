@@ -1,2 +1,5 @@
-*_files/*
-*_cache/*
+**/*_cache/*
+/.quarto/
+/*_files/*
+/statistical_supplements/*_files/*
+.Rhistory

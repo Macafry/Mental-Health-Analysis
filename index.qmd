@@ -76,7 +76,7 @@ When we look at these variables side by side, a few patterns begin to emerge:
 - **Therapy sessions** show a split: low-to-moderate anxiety with minimal use, high anxiety with frequent sessions.
 
 
-```{r double_variable_plot}
+```{r double_variable_plots}
 double_variable_plot <- function(data, variable, var_type) {
   if (variable == "Anxiety Level (1-10)") return(NULL)  # Skip self-comparison
     
@@ -131,7 +131,7 @@ double_variable_plot <- function(data, variable, var_type) {
 }
 ```
 
-```{r}
+```{r render_double_variable_plots}
 #| message: false
 #| warning: false
 #| fig-width: 14
@@ -179,7 +179,7 @@ This setup helped us model each group more effectively, without forcing a single
 
 ## Labeling High Anxiety (Levels 8–10)
 
-```{r}
+```{r logistic_model}
 logistic_data <- data %>% 
     mutate(AnxietyBinary = ifelse(`Anxiety Level (1-10)`<=7, "Low/Moderate Anxiety", "High Anxiety")) %>% 
     select(-`Anxiety Level (1-10)`) %>%
@@ -187,6 +187,8 @@ logistic_data <- data %>%
     mutate(AnxietyBinary = factor(AnxietyBinary, levels=c("Low/Moderate Anxiety", "High Anxiety"))) 
 
 names(logistic_data) <- make.names(names(logistic_data)) %>% sub("\\.\\..*$", "", .)
+
+logistic_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data=logistic_data)
 ```
 
 
@@ -236,8 +238,6 @@ Below is the **confusion matrix**, which shows what happens if we use a 50% thre
 It’s not a perfect separation, but the results reflect a general alignment with the earlier patterns in the data.
 
 ```{r logistic_model_cm}
-logistic_model <- glm(AnxietyBinary ~ Therapy.Sessions + Stress.Level + Sleep.Hours + Caffeine.Intake + Diet.Quality, family = binomial(), data=logistic_data)
-
 # get prediction data
 true_class <- logistic_data$AnxietyBinary
 pred_probs <- predict(logistic_model, type = "response")
@@ -424,7 +424,7 @@ As shown in the confusion matrix below, most predictions clustered near the corr
 
 On the other hand, the model struggled at the extremes, rarely predicting the lowest or highest scores.  Considering we already flagged high risk individuals, this limitation is acceptable. Still, it’s a helpful reminder that this model is better suited for exploring overall trends than for making precise individual predictions.
 
-```{r}
+```{r linear_model}
 linear_data <- data %>% 
     mutate(across(where(is.character), as.factor)) %>%
     filter(`Anxiety Level (1-10)`<=7)
@@ -434,7 +434,7 @@ names(linear_data) <- make.names(names(linear_data)) %>% sub("\\.\\..*$", "", .)
 linear_model <- lm(Anxiety.Level ~ Stress.Level + Sleep.Hours + Caffeine.Intake + Therapy.Sessions + Family.History.of.Anxiety, data=linear_data)
 ```
 
-```{r}
+```{r linear_model_cm}
 #| warning: false
 
 
